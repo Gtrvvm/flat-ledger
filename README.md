@@ -1,135 +1,87 @@
-# Flat Ledger — setup
+# Flat Ledger
 
-Four files make the app: `index.html`, `manifest.json`, `sw.js`, and the four PNG icons. No build step, no npm, no framework.
+A shared expense tracker for a flatshare. Four people, one ledger, no subscription.
 
-You can use it right now with zero setup — it just won't sync between phones until you do part 2.
+Built because Splitwise puts recurring bills and CSV export behind a paywall, and because a flat where different people pay the rent, the broadband, the electricity and the water needs something that remembers who pays what.
 
----
-
-## Part 1 — Put it online (10 minutes, free)
-
-You need HTTPS hosting, otherwise iOS won't let you install it. GitHub Pages is free and permanent.
-
-1. Make a GitHub account if you don't have one.
-2. Create a new **public** repository called `flat-ledger`.
-3. Click **Add file → Upload files**, drag in all seven files, commit.
-4. Go to **Settings → Pages**. Under "Branch" pick `main` and `/ (root)`. Save.
-5. Wait about a minute. Your app is at:
-   `https://YOURNAME.github.io/flat-ledger/`
-
-### Install it on your phone
-
-- **iPhone:** open the link in Safari (must be Safari), tap the share button, tap **Add to Home Screen**.
-- **Android:** open in Chrome, tap the three dots, tap **Install app** or **Add to Home Screen**.
-
-It gets its own icon and opens without a browser bar. It also works offline — the service worker caches the whole thing.
-
-Send the link to the other three so they can do the same.
+Installs to the home screen, works offline, syncs live between phones.
 
 ---
 
-## Part 2 — Make all four phones sync (20 minutes, free)
+## What it does
 
-Without this, each phone keeps its own separate ledger. Firebase's free tier is far more than four people will ever use.
+**Splits an expense four ways** — or two, or three. Uncheck whoever wasn't involved; a takeaway two people ordered doesn't get split four ways.
 
-1. Go to `console.firebase.google.com` and create a project. Turn Google Analytics **off**, you don't need it.
-2. In the left menu: **Build → Realtime Database → Create Database**.
-   - Pick the **europe-west1** location.
-   - Start in **test mode**.
-3. Go to the **Rules** tab and replace what's there with:
+**Four splitting modes**, chosen per expense:
 
-```json
-{
-  "rules": {
-    "flats": {
-      "$room": {
-        ".read": true,
-        ".write": true
-      }
-    }
-  }
-}
-```
+| Mode | Use it when |
+|---|---|
+| Equally | The default. Most things. |
+| By shares | Someone takes a bigger portion. Give them `2` and everyone else `1`. Rebalances automatically if a person leaves the split. |
+| By % | You want fixed proportions. Must total 100. |
+| Exact £ | You know the actual amounts. Must add up to the total. |
 
-Publish it.
+Percentages and shares are stored with the expense, so editing one later reopens it with the same numbers ready to adjust. Frequently-used splits can be saved by name and reused in one tap.
 
-4. Go to **Project settings** (gear icon) → scroll to "Your apps" → click the **web** icon `</>`. Register the app with any nickname. Firebase shows you a `firebaseConfig` block. Copy the object — the bit inside the curly braces, including the braces.
+**Recurring bills** each remember their own payer and whether the amount is fixed or variable. Rent and broadband are the same every month and appear pre-filled. Electricity, water and heating vary, so they appear with the amount blank. Once logged for the month they drop off the list.
 
-5. Open the app on your phone → **Settings** → paste that config into **Firebase config**.
-   The config must be valid JSON, so the keys need quotes:
+**Settle up** reduces everyone's position to the fewest possible transfers, rather than everyone paying everyone. Recording a transfer clears the balance.
 
-```json
-{
-  "apiKey": "AIzaSy...",
-  "authDomain": "flat-ledger-xxxx.firebaseapp.com",
-  "databaseURL": "https://flat-ledger-xxxx-default-rtdb.europe-west1.firebasedatabase.app",
-  "projectId": "flat-ledger-xxxx",
-  "appId": "1:123456789:web:abc123"
-}
-```
-
-**`databaseURL` is the important one.** If Firebase didn't include it in the snippet, copy it from the top of the Realtime Database page.
-
-6. Set a **room code**, e.g. `coppermaker-109-k4x9`. Add random characters — anyone who guesses the code can read and edit your ledger.
-
-7. Save. The app reloads and the dot at the bottom turns blue.
-
-8. Give the other three the same config and the same room code. That's it — everyone's on the same ledger, updating live.
+**Also:** notes on expenses, full-text search across the ledger, monthly totals, CSV export with one column per person.
 
 ---
 
-## About the security
+## How the numbers work
 
-The rules above let anyone with the room code read and write. For four flatmates splitting a Tesco shop that's fine, and it's why the room code should have random characters in it. Nothing sensitive is stored — no card numbers, no bank details, just names and amounts.
+**Everything is integer pence.** No floats anywhere in the money path. `12.50` becomes `1250` on the way in and is formatted back on the way out.
 
-If you later want it locked down properly, the route is Firebase Anonymous Auth plus `".read": "auth != null"`. Not worth it on day one.
+**Splits use largest-remainder allocation.** £10 across three people gives 3.34 / 3.33 / 3.33 — never 3.33 / 3.33 / 3.33 with a penny quietly lost. Each person gets the floor of their exact share, then the leftover pennies go to whoever had the largest fractional remainder. Verified against 500 randomised totals and weightings with zero drift.
 
----
+**Balances are a single pass** over the ledger: a payer's balance goes up by what they paid, each participant's goes down by their share. A settlement payment is stored as the same shape — payer pays, recipient owes — so one code path handles both and the column always nets to zero.
 
-## Using it
-
-**Recurring bills** live in Settings. Each one remembers who normally pays it:
-
-| Bill | Type | Payer |
-|---|---|---|
-| Rent | fixed | you |
-| Broadband | fixed | whoever |
-| Electricity | varies | whoever |
-| Water | varies | whoever |
-| Heating | varies | whoever |
-
-Fixed ones appear under "Due this month" with the amount pre-filled — one tap. Variable ones appear with the amount blank, so you type it when the bill lands. Once added for the month, they disappear from the due list.
-
-Edit the defaults to match who actually pays what. I guessed.
-
-**Everything else** is the Add expense button. Uncheck anyone not involved — a takeaway two of you ordered splits two ways, not four.
-
-**Four ways to split**, chosen per expense:
-
-- **Equally** — the default.
-- **By shares** — give yourself 2 and everyone else 1, and you pay 2/5. Handy when you don't want to think in percentages; the maths adjusts automatically if someone drops out of the split.
-- **By %** — must total 100. Live preview shows the pounds each person owes as you type.
-- **Exact £** — type the actual amounts; must add up to the total.
-
-**Saved splits** stop you retyping. "Food shop" is set up as 40/20/20/20. Tap it, and the percentages and the people fill in. Save new ones from the split box; delete them in Settings. They sync to everyone.
-
-**Notes** are the optional line under the description — "includes Phoebe's shampoo". Shown in the ledger and searchable.
-
-**Search** filters by description, note, category, payer, date or amount, and totals the matches.
-
-**Edit** on any expense changes the amount, split or note after the fact. Balances recalculate.
-
-**Repeat** on any past expense re-fills the form with the same payer, split and amount. Fastest way to log the weekly shop.
-
-**Payment** is for when money actually moves between two of you. Record it, and balances reset. Don't skip this or the numbers drift from reality.
-
-**Export CSV** opens a panel with two options. *Download file* saves a `.csv`. *Copy to clipboard* gives you the same text to paste straight into Excel or Google Sheets — use this on a phone, where browsers often block downloads silently. One column per flatmate, so you can sum a person's column to check the maths yourself.
+**Settle-up is greedy matching**, largest debtor against largest creditor. Not provably minimal in the general case, but for four people it produces the obvious answer in at most three transfers.
 
 ---
 
-## Known limits
+## Design decisions
 
-- Two people editing the *same* thing at the same second: last one wins. Separate expenses added at the same time are fine — each is stored under its own key.
-- Offline, you can view everything and add expenses, but they only sync when you're back online and the app is open.
-- No login. Whoever has the link and room code is in.
-- Percentages are stored with the expense, so editing one later reopens it with the same percentages ready to adjust.
+**No framework, no build step.** One HTML file, vanilla JS, no npm, no bundler. Editing a line and committing puts it live in about a minute. Nothing to break in two years when a dependency goes stale.
+
+**Firebase Realtime Database, keyed per entry.** Each expense is written to its own key rather than the whole ledger being rewritten, so two people adding expenses at the same moment don't overwrite each other.
+
+**Network-first service worker.** Most PWA tutorials cache-first, which strands users on an old version for days. This tries the network, falls back to cache offline — so an update reaches everyone as soon as they reopen the app.
+
+**localStorage mirror.** The Realtime Database web SDK has no disk persistence, so a copy of the ledger is kept locally for cold starts with no signal.
+
+**Sync config lives in app settings, not the source.** Nothing secret is committed, and nobody needs to edit code to join.
+
+---
+
+## Stack
+
+Vanilla JS · Firebase Realtime Database · Service Worker · Web App Manifest · GitHub Pages
+
+No dependencies. No build. Roughly 900 lines.
+
+---
+
+## Setup
+
+See [SETUP.md](SETUP.md). Short version: host the folder anywhere with HTTPS, create a Firebase Realtime Database, paste the config and a room code into the app's settings on each phone.
+
+It runs fine with no Firebase at all — you just get a ledger per device instead of a shared one.
+
+---
+
+## Limitations
+
+- One flat, one currency (£).
+- No login. Anyone with the link and the room code can read and write, which is why the room code should have random characters in it. No card or bank details are ever stored.
+- Offline edits sync when the app is next open with a connection, not in the background.
+- Simultaneous edits to *the same* entry are last-write-wins.
+
+---
+
+## Licence
+
+MIT.
