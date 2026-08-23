@@ -200,6 +200,16 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 .trail.del{color:var(--red)}
 .voidbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 11px;background:var(--paper);border-radius:9px;margin-bottom:12px}
 .voidbar span{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.clip{font-size:11px;color:var(--muted);margin-left:5px}
+.shot{display:flex;align-items:center;gap:10px}
+.shot-thumb{width:54px;height:54px;border-radius:8px;object-fit:cover;border:1px solid var(--line);flex-shrink:0;background:var(--paper)}
+.shot-btns{display:flex;gap:6px;flex-wrap:wrap;flex:1}
+.shot-note{font-size:11px;color:var(--muted);margin-top:6px}
+.shot-note.bad{color:var(--red)}
+.viewer{text-align:center}
+.viewer img{max-width:100%;max-height:66vh;border-radius:10px;border:1px solid var(--line);background:var(--paper)}
+.viewer .meta{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);margin-top:10px}
 .stmt-nav{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px}
 .stmt-nav button{width:38px;height:38px;border-radius:9px;border:1px solid var(--line);background:var(--card);
   font-size:17px;color:var(--ink);cursor:pointer;flex-shrink:0}
@@ -367,6 +377,19 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
   </div>
   <div class="field"><label class="label" for="note">Note <span style="text-transform:none;letter-spacing:0">(optional)</span></label>
     <input class="input" id="note" type="text" placeholder="e.g. includes Phoebe's shampoo" autocomplete="off"></div>
+  <div class="field"><span class="label">Receipt — optional</span>
+    <div class="shot">
+      <img id="shotThumb" class="shot-thumb" alt="" style="display:none">
+      <div class="shot-btns">
+        <button class="btn small" id="shotTake" type="button">Take photo</button>
+        <button class="btn small" id="shotPick" type="button">Choose file</button>
+        <button class="btn small" id="shotDrop" type="button" style="display:none">Remove</button>
+      </div>
+    </div>
+    <div class="shot-note" id="shotNote"></div>
+    <input type="file" id="shotCam" accept="image/*" capture="environment" style="display:none">
+    <input type="file" id="shotFile" accept="image/*" style="display:none">
+  </div>
   <div class="field"><label class="label" for="date">Date</label><input class="input" id="date" type="date"></div>
   <div class="err" id="expErr"></div>
   <button class="btn primary" id="saveExpense" style="width:100%;padding:13px;font-size:15px">Save expense</button>
@@ -461,6 +484,16 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
   </div>
   <div id="actButtons"></div>
   <button class="btn" data-close style="width:100%;padding:13px;margin-top:4px">Cancel</button>
+</div>
+
+<!-- RECEIPT VIEWER -->
+<div class="sheet" id="sheetShot" role="dialog" aria-label="Receipt">
+  <div class="sheet-head"><h3>Receipt</h3><button class="btn small" data-close>Close</button></div>
+  <div class="viewer">
+    <img id="shotBig" alt="Receipt photo">
+    <div class="meta" id="shotMeta"></div>
+  </div>
+  <button class="btn" id="shotDelete" style="width:100%;padding:12px;margin-top:14px">Remove receipt</button>
 </div>
 
 <!-- MONTHLY STATEMENT -->
@@ -636,6 +669,8 @@ function flush(){
   if(job.kind==='meta')        op=fbRefs.set(fbRefs.meta,job.payload);
   else if(job.kind==='entry')  op=fbRefs.set(fbRefs.child(fbRefs.entries,job.id),job.payload);
   else if(job.kind==='delete') op=fbRefs.remove(fbRefs.child(fbRefs.entries,job.id));
+  else if(job.kind==='photo')  op=fbRefs.set(fbRefs.child(fbRefs.photos,job.id),job.payload);
+  else if(job.kind==='photodel')op=fbRefs.remove(fbRefs.child(fbRefs.photos,job.id));
   else { outbox.shift(); saveOutbox(); flushing=false; return flush(); }
 
   op.then(function(){
@@ -679,8 +714,10 @@ function restoreEntry(id){
   pushEntry(e);
 }
 function purgeEntry(id){
+  var had=state.entries[id]&&state.entries[id].hasPhoto;
   delete state.entries[id]; saveLocal(); render();
   enqueue({kind:'delete',id:id});
+  if(had)deletePhoto(id);
 }
 // Four people logging expenses means the same food shop gets entered twice.
 // Same amount on the same day is the signal worth flagging.
@@ -758,9 +795,11 @@ async function connect(){
     var database=dbMod.getDatabase(app);
     var base='flats/'+room.replace(/[.#$\[\]\/]/g,'_');
     fbRefs={
-      set:dbMod.set, remove:dbMod.remove, child:dbMod.child,
+      set:dbMod.set, remove:dbMod.remove, child:dbMod.child, get:dbMod.get,
       meta:dbMod.ref(database,base+'/meta'),
-      entries:dbMod.ref(database,base+'/entries')
+      entries:dbMod.ref(database,base+'/entries'),
+      // Deliberately NOT subscribed with onValue — fetched one at a time, on tap.
+      photos:dbMod.ref(database,base+'/photos')
     };
     dbMod.onValue(fbRefs.meta,function(snap){
       var v=snap.val(); if(!v)return;
@@ -1043,7 +1082,8 @@ function entryRow(e){
   var myShare=(e.shares&&e.shares[me])||0;
   var mineTxt=(!isPay&&myShare)?'you: '+money(myShare):'';
   row.innerHTML='<div class="tag'+(isPay?' pay':'')+'">'+esc(isPay?'Payment':(e.category||'Other'))+'</div>'+
-    '<div class="entry-body"><div class="entry-desc">'+esc(e.desc||(isPay?'Settle up':'Expense'))+'</div>'+
+    '<div class="entry-body"><div class="entry-desc">'+esc(e.desc||(isPay?'Settle up':'Expense'))+
+      (e.hasPhoto?'<span class="clip" title="Has a receipt">\uD83D\uDCCE</span>':'')+'</div>'+
     '<div class="entry-sub">'+esc(sub)+'</div>'+
     (e.note?'<div class="entry-note">'+esc(e.note)+'</div>':'')+
     (e.addedBy?'<div class="trail">Added by '+esc(memberById(e.addedBy).name)+
@@ -1104,6 +1144,9 @@ function openActions(e){
           function(why,ok){ if(ok)declinePayment(e.id,why); });
     });
   } else {
+    if(!isPay&&e.hasPhoto){
+      btn('View receipt','Opens the photo','',function(){openShot(e);});
+    }
     if(!isPay){
       btn('Edit','Change the amount, split or note','',function(){closeSheets();editEntry(e);});
       btn('Repeat','Log it again today with the same split','',function(){closeSheets();repeatEntry(e);});
@@ -1177,7 +1220,7 @@ function askDone(ok){
 }
 function openSheet(id){document.getElementById('scrim').classList.add('open');document.getElementById(id).classList.add('open');}
 function closeSheets(){document.getElementById('scrim').classList.remove('open');
-  ['sheetExpense','sheetPay','sheetSettings','sheetTpl','sheetCsv','sheetAct','sheetPreset','sheetAsk','sheetStmt'].forEach(function(i){document.getElementById(i).classList.remove('open');});}
+  ['sheetExpense','sheetPay','sheetSettings','sheetTpl','sheetCsv','sheetAct','sheetPreset','sheetAsk','sheetStmt','sheetShot'].forEach(function(i){document.getElementById(i).classList.remove('open');});}
 
 function openExpense(){
   form={cat:'Groceries',paidBy:me,split:{},mode:'equal',custom:{},weights:{},tplId:null,period:null,editingId:null};
@@ -1190,6 +1233,7 @@ function openExpense(){
   capDate('date');
   document.getElementById('expErr').textContent='';
   document.getElementById('saveExpense').textContent='Save expense';
+  resetShot();
   drawExpenseChips(); drawSplitDetail(); openSheet('sheetExpense');
   setTimeout(function(){document.getElementById('amount').focus();},90);
 }
@@ -1209,6 +1253,14 @@ function editEntry(e){
   capDate('date');
   document.getElementById('expErr').textContent='';
   document.getElementById('saveExpense').textContent='Save changes';
+  resetShot();
+  if(e.hasPhoto){
+    document.getElementById('shotNote').textContent='Loading receipt\u2026';
+    getPhoto(e.id,function(p){
+      if(p&&p.data){ form.photo=p.data; form.photoChanged=false; drawShot(); }
+      else document.getElementById('shotNote').textContent='Receipt could not be loaded.';
+    });
+  }
   drawExpenseChips(); drawSplitDetail(); openSheet('sheetExpense');
 }
 function openExpenseFromTemplate(t){
@@ -1221,6 +1273,7 @@ function openExpenseFromTemplate(t){
   capDate('date');
   document.getElementById('expErr').textContent='';
   document.getElementById('saveExpense').textContent='Save expense';
+  resetShot();
   drawExpenseChips(); drawSplitDetail(); openSheet('sheetExpense');
   if(!(t.kind==='fixed'&&t.amount))setTimeout(function(){document.getElementById('amount').focus();},90);
 }
@@ -1237,6 +1290,7 @@ function repeatEntry(e){
   capDate('date');
   document.getElementById('expErr').textContent='';
   document.getElementById('saveExpense').textContent='Save expense';
+  resetShot();
   drawExpenseChips(); drawSplitDetail(); openSheet('sheetExpense');
 }
 
@@ -1424,6 +1478,109 @@ function drawSettingsPresets(){
 }
 
 var payDir='sent';
+/* ---------- receipt photos ----------
+   Compressed to JPEG in the browser, stored base64 in their own database node,
+   and only ever fetched when someone taps to look at one.                    */
+var PHOTO_MAX_EDGE=1100;      // longest side, px
+var PHOTO_QUALITY=0.62;       // starting JPEG quality
+var PHOTO_TARGET=140*1024;    // aim under this many bytes of base64
+var photoCache={};
+
+// iPhones hand over HEIC, which Android and desktop can't display, so
+// everything gets redrawn to a canvas and re-encoded as JPEG regardless.
+function compressImage(file,cb){
+  var reader=new FileReader();
+  reader.onerror=function(){cb(null,'Could not read that file.');};
+  reader.onload=function(){
+    var img=new Image();
+    img.onerror=function(){cb(null,'That file is not an image the browser can open.');};
+    img.onload=function(){
+      var w=img.width,h=img.height,scale=Math.min(1,PHOTO_MAX_EDGE/Math.max(w,h));
+      var cw=Math.max(1,Math.round(w*scale)), ch=Math.max(1,Math.round(h*scale));
+      var canvas=document.createElement('canvas'); canvas.width=cw; canvas.height=ch;
+      var ctx=canvas.getContext('2d');
+      ctx.fillStyle='#fff'; ctx.fillRect(0,0,cw,ch);   // no black edges on transparent PNGs
+      ctx.drawImage(img,0,0,cw,ch);
+      var q=PHOTO_QUALITY, out=canvas.toDataURL('image/jpeg',q);
+      // step the quality down until it fits, rather than storing something huge
+      var guard=0;
+      while(out.length>PHOTO_TARGET&&q>0.3&&guard<6){ q-=0.08; out=canvas.toDataURL('image/jpeg',q); guard++; }
+      if(out.length>PHOTO_TARGET*2){ cb(null,'That image is too large even after compressing.'); return; }
+      cb(out,null);
+    };
+    img.src=reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function drawShot(){
+  var t=document.getElementById('shotThumb'), drop=document.getElementById('shotDrop'),
+      note=document.getElementById('shotNote');
+  if(form.photo){
+    t.src=form.photo; t.style.display='block'; drop.style.display='inline-block';
+    note.className='shot-note';
+    note.textContent='About '+Math.round(form.photo.length/1024)+'KB after compressing.';
+  } else {
+    t.style.display='none'; drop.style.display='none';
+  }
+}
+function resetShot(){
+  form.photo=null; form.photoChanged=false;
+  var n=document.getElementById('shotNote'); n.className='shot-note'; n.textContent='';
+  drawShot();
+}
+function attachShot(file){
+  var note=document.getElementById('shotNote');
+  if(!file)return;
+  note.className='shot-note'; note.textContent='Compressing\u2026';
+  compressImage(file,function(dataUrl,err){
+    if(err){ note.className='shot-note bad'; note.textContent=err; return; }
+    form.photo=dataUrl; form.photoChanged=true; drawShot();
+  });
+}
+function commitExpense(e,photo,dropped){
+  pushEntry(e);
+  if(photo)savePhoto(e.id,photo);
+  else if(dropped)deletePhoto(e.id);
+}
+function savePhoto(entryId,dataUrl){
+  photoCache[entryId]={data:dataUrl,by:me,at:Date.now()};
+  enqueue({kind:'photo',id:entryId,payload:photoCache[entryId]});
+}
+function deletePhoto(entryId){
+  delete photoCache[entryId];
+  enqueue({kind:'photodel',id:entryId});
+}
+// Order matters: memory, then anything still queued, then the server.
+function getPhoto(entryId,cb){
+  if(photoCache[entryId])return cb(photoCache[entryId]);
+  var queued=null;
+  outbox.forEach(function(j){ if(j.kind==='photo'&&j.id===entryId)queued=j.payload; });
+  if(queued){ photoCache[entryId]=queued; return cb(queued); }
+  if(!fbRefs||!fbRefs.get)return cb(null);
+  fbRefs.get(fbRefs.child(fbRefs.photos,entryId)).then(function(snap){
+    var v=snap&&snap.val?snap.val():null;
+    if(v)photoCache[entryId]=v;
+    cb(v);
+  }).catch(function(){ cb(null); });
+}
+
+var shotEntry=null;
+function openShot(e){
+  shotEntry=e;
+  var img=document.getElementById('shotBig'), meta=document.getElementById('shotMeta');
+  img.removeAttribute('src'); meta.textContent='Loading\u2026';
+  closeSheets(); openSheet('sheetShot');
+  getPhoto(e.id,function(p){
+    if(p&&p.data){
+      img.src=p.data;
+      meta.textContent='Added by '+memberById(p.by||e.addedBy).name+' \u00B7 '+stamp(p.at||e.createdAt);
+    } else {
+      meta.textContent=fbRefs?'Receipt not found.':'Not on this phone — connect to load it.';
+    }
+  });
+}
+
 /* ---------- monthly statement ---------- */
 var stmtPeriod=null;
 function monthLabel(p){
@@ -1676,6 +1833,26 @@ function wire(){
   document.getElementById('settingsBtn').onclick=openSettings;
   document.getElementById('exportBtn').onclick=openCSV;
   document.getElementById('stmtBtn').onclick=openStatement;
+
+  document.getElementById('shotTake').onclick=function(){document.getElementById('shotCam').click();};
+  document.getElementById('shotPick').onclick=function(){document.getElementById('shotFile').click();};
+  document.getElementById('shotCam').onchange=function(ev){attachShot(ev.target.files[0]);ev.target.value='';};
+  document.getElementById('shotFile').onchange=function(ev){attachShot(ev.target.files[0]);ev.target.value='';};
+  document.getElementById('shotDrop').onclick=function(){
+    form.photo=null; form.photoChanged=true; drawShot();
+    document.getElementById('shotNote').textContent='Receipt will be removed when you save.';
+  };
+  document.getElementById('shotDelete').onclick=function(){
+    var e=shotEntry; if(!e)return;
+    ask({title:'Remove this receipt?', message:'The photo is deleted. The expense itself stays.',
+         okLabel:'Remove', danger:true},
+        function(v,ok){
+          if(!ok)return;
+          deletePhoto(e.id);
+          var live=state.entries[e.id];
+          if(live){ delete live.hasPhoto; pushEntry(live); }
+        });
+  };
   document.getElementById('stmtPrev').onclick=function(){stmtPeriod=shiftPeriod(stmtPeriod,-1);drawStatement();};
   document.getElementById('stmtNext').onclick=function(){stmtPeriod=shiftPeriod(stmtPeriod,1);drawStatement();};
   document.getElementById('csvDownload').onclick=downloadCSV;
@@ -1753,6 +1930,10 @@ function wire(){
     if(weights)e.weights=weights;
     if(form.tplId){e.templateId=form.tplId;e.period=form.period||thisPeriod();}
 
+    if(form.photo)e.hasPhoto=true; else delete e.hasPhoto;
+    var pendingPhoto = form.photoChanged ? form.photo : null;
+    var droppedPhoto = (form.photoChanged && !form.photo);
+
     var dupe=findDuplicate(e.amount,e.date,form.editingId);
     if(dupe){
       ask({title:'Already logged?',
@@ -1761,10 +1942,10 @@ function wire(){
                    memberById(dupe.addedBy||dupe.paidBy).name+
                    '. Add this one as well?',
            okLabel:'Add anyway', cancelLabel:'Back'},
-          function(v,ok){ if(ok){ closeSheets(); pushEntry(e); } });
+          function(v,ok){ if(ok){ closeSheets(); commitExpense(e,pendingPhoto,droppedPhoto); } });
       return;
     }
-    closeSheets(); pushEntry(e);
+    closeSheets(); commitExpense(e,pendingPhoto,droppedPhoto);
   };
 
   document.getElementById('dirSent').onclick=function(){payDir='sent';drawPayDir();};
