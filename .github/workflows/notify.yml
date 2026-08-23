@@ -1,0 +1,31 @@
+name: Flat Ledger monthly reminder
+
+# Live notifications are handled by the Cloud Function, which fires the
+# instant an entry is written. This job only does the monthly nudge.
+
+on:
+  schedule:
+    - cron: '0 9 1 * *'     # 09:00 UTC on the 1st
+  workflow_dispatch:
+
+concurrency:
+  group: flat-notify
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Send monthly reminder
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
+          FLAT_ROOM: ${{ secrets.FLAT_ROOM }}
+          MONTHLY_CHECK: '1'
+          MONTHLY_ONLY: '1'
+        run: node scripts/notify.js

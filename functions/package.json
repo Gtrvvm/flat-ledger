@@ -1,0 +1,13 @@
+{
+  "name": "flat-ledger-functions",
+  "description": "Instant push notifications for Flat Ledger",
+  "main": "index.js",
+  "engines": {
+    "node": "22"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.6.0",
+    "firebase-functions": "^6.1.0"
+  },
+  "private": true
+}
