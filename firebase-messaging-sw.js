@@ -29,7 +29,7 @@ if (config.projectId) {
     self.registration.showNotification(d.title || 'Flat Ledger', {
       body: d.body || '',
       icon: 'icon-192.png',
-      badge: 'icon-192.png',
+      badge: 'badge-96.png',            // must be a white silhouette, not the app icon
       tag: d.tag || 'flat-ledger',       // same tag replaces, rather than stacking
       renotify: false,
       data: { url: d.url || './' }
