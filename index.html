@@ -200,6 +200,13 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 .trail.del{color:var(--red)}
 .voidbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 11px;background:var(--paper);border-radius:9px;margin-bottom:12px}
 .voidbar span{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.read-btn{width:100%;margin-top:8px}
+.read-out{border:1px solid var(--line);border-radius:9px;padding:11px;margin-top:9px;display:none}
+.read-out.show{display:block}
+.read-line{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:5px 0;font-size:13px}
+.read-line .k{color:var(--muted);font-size:12px}
+.read-line .v{font-family:var(--mono);font-weight:600;font-variant-numeric:tabular-nums}
+.read-warn{font-size:12px;color:var(--amber);margin-top:6px;line-height:1.4}
 .clip{font-size:11px;color:var(--muted);margin-left:5px}
 .shot{display:flex;align-items:center;gap:10px}
 .shot-thumb{width:54px;height:54px;border-radius:8px;object-fit:cover;border:1px solid var(--line);flex-shrink:0;background:var(--paper)}
@@ -387,6 +394,8 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
       </div>
     </div>
     <div class="shot-note" id="shotNote"></div>
+    <button class="btn small read-btn" id="readBtn" type="button" style="display:none">Read the receipt</button>
+    <div class="read-out" id="readOut"></div>
     <input type="file" id="shotCam" accept="image/*" capture="environment" style="display:none">
     <input type="file" id="shotFile" accept="image/*" style="display:none">
   </div>
@@ -549,6 +558,13 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 
   <div class="divider"></div>
 
+  <div class="field"><span class="label">Receipt reader — optional</span>
+    <p class="hint" style="margin-top:0">Paste the address of your receipt-reading Worker. Leave blank and receipts still attach, they just won't be read automatically.</p>
+    <input class="input" id="ocrUrl" type="url" placeholder="https://flat-receipts.yourname.workers.dev" autocomplete="off" style="margin-top:8px">
+  </div>
+
+  <div class="divider"></div>
+
   <div class="field"><span class="label">Sync between phones</span>
     <p class="hint" style="margin-top:0">Paste the same Firebase config and room code on all four phones. Leave blank to keep everything on this device only.</p>
     <label class="label" style="margin-top:12px" for="fbConfig">Firebase config</label>
@@ -567,7 +583,7 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 'use strict';
 
 var LS='flatledger:v2', LS_ME='flatledger:me', LS_FB='flatledger:fb', LS_ROOM='flatledger:room',
-    LS_OUT='flatledger:outbox';
+    LS_OUT='flatledger:outbox', LS_OCR='flatledger:ocr';
 var CATS=['Rent','Bills','Groceries','Eating out','Household','Transport','Other'];
 
 var state=null, me=null, db=null, fbRefs=null, online=false, suppress=false, searchTerm='', showVoid=false;
@@ -1523,10 +1539,13 @@ function drawShot(){
   } else {
     t.style.display='none'; drop.style.display='none';
   }
+  drawReadButton();
 }
 function resetShot(){
   form.photo=null; form.photoChanged=false;
   var n=document.getElementById('shotNote'); n.className='shot-note'; n.textContent='';
+  var o=document.getElementById('readOut'); o.className='read-out'; o.innerHTML='';
+  var b=document.getElementById('readBtn'); b.disabled=false; b.textContent='Read the receipt';
   drawShot();
 }
 function attachShot(file){
@@ -1543,6 +1562,100 @@ function commitExpense(e,photo,dropped){
   if(photo)savePhoto(e.id,photo);
   else if(dropped)deletePhoto(e.id);
 }
+/* ---------- reading the receipt ----------
+   The photo goes to your own Cloudflare Worker, which holds the API key and
+   talks to the model. Nothing is ever saved automatically: the numbers land
+   in the form and you confirm them.                                        */
+function ocrUrl(){ try{ return (localStorage.getItem(LS_OCR)||'').trim(); }catch(e){ return ''; } }
+
+function drawReadButton(){
+  var btn=document.getElementById('readBtn');
+  btn.style.display=(form.photo&&ocrUrl())?'block':'none';
+  if(!form.photo){ var o=document.getElementById('readOut'); o.className='read-out'; o.innerHTML=''; }
+}
+function readReceipt(){
+  var url=ocrUrl(), btn=document.getElementById('readBtn'), out=document.getElementById('readOut');
+  if(!url||!form.photo)return;
+  btn.disabled=true; btn.textContent='Reading\u2026';
+  out.className='read-out show'; out.innerHTML='<div class="read-line"><span class="k">Working on it\u2026</span></div>';
+
+  var done=false;
+  var timer=setTimeout(function(){
+    if(done)return; done=true;
+    btn.disabled=false; btn.textContent='Read the receipt';
+    out.innerHTML='<div class="read-line"><span class="k">No answer in 30 seconds. Try again, or just type it in.</span></div>';
+  },30000);
+
+  fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({image:form.photo})})
+  .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,status:r.status,body:j}; }); })
+  .then(function(res){
+    if(done)return; done=true; clearTimeout(timer);
+    btn.disabled=false; btn.textContent='Read it again';
+    if(!res.ok||res.body.error){
+      out.innerHTML='<div class="read-line"><span class="k">'+
+        esc(res.body.error||('Reader returned '+res.status))+'</span></div>';
+      return;
+    }
+    showReadResult(res.body);
+  })
+  .catch(function(){
+    if(done)return; done=true; clearTimeout(timer);
+    btn.disabled=false; btn.textContent='Read the receipt';
+    out.innerHTML='<div class="read-line"><span class="k">Could not reach the reader. Check the address in Settings, or that you are online.</span></div>';
+  });
+}
+function showReadResult(r){
+  var out=document.getElementById('readOut');
+  if(r.total==null&&!r.merchant&&!r.date){
+    out.innerHTML='<div class="read-line"><span class="k">Nothing readable in that photo \u2014 type it in instead.</span></div>';
+    return;
+  }
+  out.innerHTML='';
+  function line(label,value,apply){
+    var row=document.createElement('div'); row.className='read-line';
+    row.innerHTML='<span class="k">'+esc(label)+'</span><span class="v">'+esc(value)+'</span>';
+    var b=document.createElement('button'); b.className='btn small'; b.textContent='Use';
+    b.onclick=function(){ apply(); b.textContent='Used'; b.disabled=true; };
+    row.appendChild(b); out.appendChild(row);
+  }
+  if(r.total!=null)
+    line('Total', money(Math.round(r.total*100)), function(){
+      document.getElementById('amount').value=r.total.toFixed(2);
+      if(form.mode==='custom')checkRemainder();
+      if(form.mode==='percent'||form.mode==='shares')refreshRatio();
+    });
+  if(r.merchant)
+    line('Shop', r.merchant, function(){ document.getElementById('desc').value=r.merchant; });
+  if(r.date)
+    line('Date', prettyDate(r.date), function(){
+      var el=document.getElementById('date'); el.value=r.date; capDate('date');
+    });
+
+  var all=document.createElement('button');
+  all.className='btn primary small'; all.style.width='100%'; all.style.marginTop='8px';
+  all.textContent='Use all of it';
+  all.onclick=function(){
+    if(r.total!=null){
+      document.getElementById('amount').value=r.total.toFixed(2);
+      if(form.mode==='custom')checkRemainder();
+      if(form.mode==='percent'||form.mode==='shares')refreshRatio();
+    }
+    if(r.merchant)document.getElementById('desc').value=r.merchant;
+    if(r.date){ document.getElementById('date').value=r.date; capDate('date'); }
+    all.textContent='Filled in'; all.disabled=true;
+    Array.prototype.forEach.call(out.querySelectorAll('.btn.small'),function(b){
+      if(b!==all){b.textContent='Used';b.disabled=true;} });
+  };
+  out.appendChild(all);
+
+  var warn=document.createElement('div'); warn.className='read-warn';
+  warn.textContent = r.confident
+    ? 'Check the figures against the receipt before saving.'
+    : 'The reader was not confident about this one \u2014 check it carefully.';
+  out.appendChild(warn);
+}
+
 function savePhoto(entryId,dataUrl){
   photoCache[entryId]={data:dataUrl,by:me,at:Date.now()};
   enqueue({kind:'photo',id:entryId,payload:photoCache[entryId]});
@@ -1767,6 +1880,7 @@ function openSettings(){
     row.appendChild(idx);row.appendChild(inp);row.appendChild(tog);box.appendChild(row);
   });
   drawSettingsTemplates(); drawSettingsPresets();
+  document.getElementById('ocrUrl').value=localStorage.getItem(LS_OCR)||'';
   document.getElementById('fbConfig').value=localStorage.getItem(LS_FB)||'';
   document.getElementById('roomCode').value=localStorage.getItem(LS_ROOM)||'';
   document.getElementById('setErr').textContent='';
@@ -1834,6 +1948,7 @@ function wire(){
   document.getElementById('exportBtn').onclick=openCSV;
   document.getElementById('stmtBtn').onclick=openStatement;
 
+  document.getElementById('readBtn').onclick=readReceipt;
   document.getElementById('shotTake').onclick=function(){document.getElementById('shotCam').click();};
   document.getElementById('shotPick').onclick=function(){document.getElementById('shotFile').click();};
   document.getElementById('shotCam').onchange=function(ev){attachShot(ev.target.files[0]);ev.target.value='';};
@@ -2044,6 +2159,11 @@ function wire(){
     Array.prototype.forEach.call(inputs,function(inp){
       var m=memberById(inp.dataset.mid), v=inp.value.trim(); if(v)m.name=v; });
     state.flatName=document.getElementById('flatNameInput').value.trim()||'Our flat';
+
+    var ocr=document.getElementById('ocrUrl').value.trim();
+    if(ocr&&!/^https:\/\/\S+$/.test(ocr)){
+      document.getElementById('setErr').textContent='The reader address must start with https://';return;}
+    try{ localStorage.setItem(LS_OCR,ocr.replace(/\/+$/,'')); }catch(e){}
 
     var cfg=document.getElementById('fbConfig').value.trim();
     var room=document.getElementById('roomCode').value.trim();
