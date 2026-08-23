@@ -111,8 +111,23 @@ exports.onEntryWritten = onValueWritten(
       sends.push(
         getMessaging().send({
           token,
+          /* A data-only message only appears if onBackgroundMessage fires in the
+           * service worker and calls showNotification itself — one more thing to
+           * go wrong, and it did. webpush.notification is displayed by the browser
+           * directly, so the worker is no longer in the way. data is kept for the
+           * foreground handler. */
           data: { title: msg.title, body: msg.body, tag: msg.tag },
-          webpush: { headers: { Urgency: 'high', TTL: '86400' } }
+          webpush: {
+            headers: { Urgency: 'high', TTL: '86400' },
+            notification: {
+              title: msg.title,
+              body: msg.body,
+              icon: '/flat-ledger/icon-192.png',
+              badge: '/flat-ledger/icon-192.png',
+              tag: msg.tag || 'flat-ledger'
+            },
+            fcmOptions: { link: '/flat-ledger/' }
+          }
         }).catch(err => {
           const code = err && err.errorInfo && err.errorInfo.code;
           if (code === 'messaging/registration-token-not-registered' ||
