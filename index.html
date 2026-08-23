@@ -1839,7 +1839,12 @@ async function enableNotify(){
            '&projectId='+encodeURIComponent(cfg.projectId||'')+
            '&senderId='+encodeURIComponent(cfg.messagingSenderId||'')+
            '&appId='+encodeURIComponent(cfg.appId||'');
-    var reg=await navigator.serviceWorker.register('firebase-messaging-sw.js'+qs);
+    /* Two service workers cannot share a scope. sw.js owns the app scope and
+     * is re-registered on every page load, which was silently evicting this
+     * one — Firebase reported "sent 1" and the phone had nothing listening.
+     * This is the scope FCM uses by default. */
+    var reg=await navigator.serviceWorker.register('firebase-messaging-sw.js'+qs,
+      { scope: './firebase-cloud-messaging-push-scope' });
 
     var appMod=await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js');
     var msgMod=await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js');
