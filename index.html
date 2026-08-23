@@ -558,6 +558,24 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 
   <div class="divider"></div>
 
+  <div class="field"><span class="label">Notifications</span>
+    <p class="hint" style="margin-top:0" id="notifyState">Checking…</p>
+    <button class="btn small" id="notifyOn" style="margin-top:8px;display:none">Turn on for this phone</button>
+    <div id="notifyPrefs" style="display:none;margin-top:10px">
+      <div class="chips">
+        <button class="chip" id="prefExpense" type="button">New expenses</button>
+        <button class="chip" id="prefPayment" type="button">Payments to confirm</button>
+        <button class="chip" id="prefMonthly" type="button">Monthly bills</button>
+      </div>
+      <p class="hint">Each phone turns these on separately. Tap one to switch it off.</p>
+    </div>
+    <label class="label" style="margin-top:12px" for="vapidKey">Web push key</label>
+    <input class="input" id="vapidKey" type="text" placeholder="Paste the key pair from Firebase → Cloud Messaging" autocomplete="off">
+    <p class="hint">Set once by one person; it reaches everyone else automatically.</p>
+  </div>
+
+  <div class="divider"></div>
+
   <div class="field"><span class="label">Receipt reader — optional</span>
     <p class="hint" style="margin-top:0">Paste the address of your receipt-reading Worker. One person sets this and it reaches everyone. Leave blank and receipts still attach, they just won't be read automatically.</p>
     <input class="input" id="ocrUrl" type="url" placeholder="https://flat-receipts.yourname.workers.dev" autocomplete="off" style="margin-top:8px">
@@ -583,7 +601,7 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 'use strict';
 
 var LS='flatledger:v2', LS_ME='flatledger:me', LS_FB='flatledger:fb', LS_ROOM='flatledger:room',
-    LS_OUT='flatledger:outbox', LS_OCR='flatledger:ocr';
+    LS_OUT='flatledger:outbox', LS_OCR='flatledger:ocr', LS_VAPID='flatledger:vapid';
 var CATS=['Rent','Bills','Groceries','Eating out','Household','Transport','Other'];
 
 var state=null, me=null, db=null, fbRefs=null, online=false, suppress=false, searchTerm='', showVoid=false;
@@ -638,6 +656,7 @@ function blank(){
     ],
     presets:[{id:'ps1',name:'Food shop',mode:'percent',weights:{m1:40,m2:20,m3:20,m4:20}}],
     ocrUrl:'',
+    vapid:'',
     entries:{}
   };
 }
@@ -649,6 +668,7 @@ function normalise(d){
   d.templates=Array.isArray(d.templates)?d.templates:[];
   d.presets=Array.isArray(d.presets)?d.presets:[];
   d.ocrUrl=typeof d.ocrUrl==='string'?d.ocrUrl:'';
+  d.vapid=typeof d.vapid==='string'?d.vapid:'';
   if(!d.entries||typeof d.entries!=='object')d.entries={};
   d.templates.forEach(function(t){if(!t.split||typeof t.split!=='object')t.split={};});
   return d;
@@ -714,7 +734,7 @@ function renderSync(){
 function pushMeta(){
   saveLocal();
   enqueue({kind:'meta',payload:{flatName:state.flatName,members:state.members,
-    templates:state.templates,presets:state.presets,ocrUrl:state.ocrUrl||''}});
+    templates:state.templates,presets:state.presets,ocrUrl:state.ocrUrl||'',vapid:state.vapid||''}});
 }
 function pushEntry(e){
   state.entries[e.id]=e; saveLocal(); render();
@@ -817,7 +837,8 @@ async function connect(){
       meta:dbMod.ref(database,base+'/meta'),
       entries:dbMod.ref(database,base+'/entries'),
       // Deliberately NOT subscribed with onValue — fetched one at a time, on tap.
-      photos:dbMod.ref(database,base+'/photos')
+      photos:dbMod.ref(database,base+'/photos'),
+      tokens:dbMod.ref(database,base+'/tokens')
     };
     dbMod.onValue(fbRefs.meta,function(snap){
       var v=snap.val(); if(!v)return;
@@ -826,6 +847,8 @@ async function connect(){
       state.templates=Array.isArray(v.templates)?v.templates:[];
       state.presets=Array.isArray(v.presets)?v.presets:[];
       state.ocrUrl=typeof v.ocrUrl==='string'?v.ocrUrl:'';
+      state.vapid=typeof v.vapid==='string'?v.vapid:'';
+      try{ localStorage.setItem(LS_VAPID,state.vapid); }catch(e){}
       // Mirror it locally so the shared value always wins — including when
       // someone clears it, which must reach phones that had an older copy.
       try{ localStorage.setItem(LS_OCR,state.ocrUrl); }catch(e){}
@@ -1569,6 +1592,102 @@ function commitExpense(e,photo,dropped){
   if(photo)savePhoto(e.id,photo);
   else if(dropped)deletePhoto(e.id);
 }
+/* ---------- notifications ----------
+   Tokens live in their own database node, one per phone. The sender is a
+   scheduled job in the GitHub repo — no Cloud Functions, so no billing
+   account needed.                                                        */
+var notifyPrefs={expense:true,payment:true,monthly:true};
+var fcmToken=null;
+
+function vapidKey(){
+  if(state&&state.vapid)return state.vapid.trim();
+  try{ return (localStorage.getItem(LS_VAPID)||'').trim(); }catch(e){ return ''; }
+}
+function loadPrefs(){
+  try{
+    var r=localStorage.getItem('flatledger:notifyPrefs');
+    if(r)notifyPrefs=Object.assign(notifyPrefs,JSON.parse(r));
+  }catch(e){}
+}
+function savePrefs(){
+  try{ localStorage.setItem('flatledger:notifyPrefs',JSON.stringify(notifyPrefs)); }catch(e){}
+  if(fcmToken)writeToken(fcmToken);
+}
+function writeToken(token){
+  if(!fbRefs||!fbRefs.tokens)return;
+  fbRefs.set(fbRefs.child(fbRefs.tokens,token),{
+    member:me, prefs:notifyPrefs, at:Date.now()
+  }).catch(function(){});
+}
+
+function notifySupported(){
+  return ('Notification' in window) && ('serviceWorker' in navigator) && ('PushManager' in window);
+}
+function drawNotify(){
+  var st=document.getElementById('notifyState'),
+      btn=document.getElementById('notifyOn'),
+      box=document.getElementById('notifyPrefs');
+  document.getElementById('vapidKey').value=state.vapid||localStorage.getItem(LS_VAPID)||'';
+
+  if(!notifySupported()){
+    st.textContent='This browser cannot do notifications. On iPhone, add the app to your home screen first.';
+    btn.style.display='none'; box.style.display='none'; return;
+  }
+  if(!vapidKey()){
+    st.textContent='Paste the web push key below, then this can be switched on.';
+    btn.style.display='none'; box.style.display='none'; return;
+  }
+  if(Notification.permission==='denied'){
+    st.textContent='Notifications are blocked for this site. Allow them in your browser settings, then come back.';
+    btn.style.display='none'; box.style.display='none'; return;
+  }
+  if(Notification.permission!=='granted'||!fcmToken){
+    st.textContent='Off on this phone.';
+    btn.style.display='inline-block'; box.style.display='none'; return;
+  }
+  st.textContent='On for this phone.';
+  btn.style.display='none'; box.style.display='block';
+  document.getElementById('prefExpense').className='chip'+(notifyPrefs.expense?' on':'');
+  document.getElementById('prefPayment').className='chip'+(notifyPrefs.payment?' on':'');
+  document.getElementById('prefMonthly').className='chip'+(notifyPrefs.monthly?' on':'');
+}
+
+async function enableNotify(){
+  var st=document.getElementById('notifyState');
+  st.textContent='Asking your phone…';
+  try{
+    var perm=await Notification.requestPermission();
+    if(perm!=='granted'){ drawNotify(); return; }
+    st.textContent='Registering…';
+
+    var cfg=JSON.parse(localStorage.getItem(LS_FB)||'{}');
+    var qs='?apiKey='+encodeURIComponent(cfg.apiKey||'')+
+           '&projectId='+encodeURIComponent(cfg.projectId||'')+
+           '&senderId='+encodeURIComponent(cfg.messagingSenderId||'')+
+           '&appId='+encodeURIComponent(cfg.appId||'');
+    var reg=await navigator.serviceWorker.register('firebase-messaging-sw.js'+qs);
+
+    var appMod=await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js');
+    var msgMod=await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js');
+    var app=appMod.getApps().length?appMod.getApps()[0]:appMod.initializeApp(cfg);
+    var messaging=msgMod.getMessaging(app);
+
+    var token=await msgMod.getToken(messaging,{vapidKey:vapidKey(),serviceWorkerRegistration:reg});
+    if(!token){ st.textContent='Your phone refused to issue a token. Try again.'; return; }
+    fcmToken=token; writeToken(token);
+
+    // Foreground messages don't raise a notification on their own.
+    msgMod.onMessage(messaging,function(payload){
+      var d=payload.data||{};
+      if(reg&&reg.showNotification)
+        reg.showNotification(d.title||'Flat Ledger',{body:d.body||'',icon:'icon-192.png',tag:d.tag||'flat-ledger'});
+    });
+    drawNotify();
+  }catch(err){
+    st.textContent='Could not switch them on: '+(err&&err.message?err.message:'unknown error');
+  }
+}
+
 /* ---------- reading the receipt ----------
    The photo goes to your own Cloudflare Worker, which holds the API key and
    talks to the model. Nothing is ever saved automatically: the numbers land
@@ -1605,8 +1724,12 @@ function readReceipt(){
     if(done)return; done=true; clearTimeout(timer);
     btn.disabled=false; btn.textContent='Read it again';
     if(!res.ok||res.body.error){
-      out.innerHTML='<div class="read-line"><span class="k">'+
-        esc(res.body.error||('Reader returned '+res.status))+'</span></div>';
+      var msg=res.body.error||('Reader returned '+res.status);
+      if(res.body.status) msg+=' ['+res.body.status+']';
+      out.innerHTML='<div class="read-line"><span class="k">'+esc(msg)+'</span></div>';
+      if(res.body.detail){
+        out.innerHTML+='<div class="read-line"><span class="k">'+esc(res.body.detail)+'</span></div>';
+      }
       return;
     }
     showReadResult(res.body);
@@ -1892,6 +2015,7 @@ function openSettings(){
     row.appendChild(idx);row.appendChild(inp);row.appendChild(tog);box.appendChild(row);
   });
   drawSettingsTemplates(); drawSettingsPresets();
+  drawNotify();
   document.getElementById('ocrUrl').value=state.ocrUrl||localStorage.getItem(LS_OCR)||'';
   document.getElementById('fbConfig').value=localStorage.getItem(LS_FB)||'';
   document.getElementById('roomCode').value=localStorage.getItem(LS_ROOM)||'';
@@ -1960,6 +2084,10 @@ function wire(){
   document.getElementById('exportBtn').onclick=openCSV;
   document.getElementById('stmtBtn').onclick=openStatement;
 
+  document.getElementById('notifyOn').onclick=enableNotify;
+  document.getElementById('prefExpense').onclick=function(){notifyPrefs.expense=!notifyPrefs.expense;savePrefs();drawNotify();};
+  document.getElementById('prefPayment').onclick=function(){notifyPrefs.payment=!notifyPrefs.payment;savePrefs();drawNotify();};
+  document.getElementById('prefMonthly').onclick=function(){notifyPrefs.monthly=!notifyPrefs.monthly;savePrefs();drawNotify();};
   document.getElementById('readBtn').onclick=readReceipt;
   document.getElementById('shotTake').onclick=function(){document.getElementById('shotCam').click();};
   document.getElementById('shotPick').onclick=function(){document.getElementById('shotFile').click();};
@@ -2172,6 +2300,10 @@ function wire(){
       var m=memberById(inp.dataset.mid), v=inp.value.trim(); if(v)m.name=v; });
     state.flatName=document.getElementById('flatNameInput').value.trim()||'Our flat';
 
+    var vap=document.getElementById('vapidKey').value.trim();
+    state.vapid=vap;
+    try{ localStorage.setItem(LS_VAPID,vap); }catch(e){}
+
     var ocr=document.getElementById('ocrUrl').value.trim().replace(/\/+$/,'');
     if(ocr&&!/^https:\/\/\S+$/.test(ocr)){
       document.getElementById('setErr').textContent='The reader address must start with https://';return;}
@@ -2195,7 +2327,7 @@ function wire(){
   if(navigator.storage&&navigator.storage.persist){
     try{ navigator.storage.persist(); }catch(e){}
   }
-  loadOutbox();
+  loadOutbox(); loadPrefs();
   state=loadLocal()||blank();
   try{ me=localStorage.getItem(LS_ME); }catch(e){}
   if(!me||memberById(me).active===false)me=(activeMembers()[0]||{}).id;
