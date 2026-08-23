@@ -36,6 +36,9 @@ body{
 h1.title{font-size:30px;font-weight:800;letter-spacing:-.03em;margin:4px 0 0;line-height:1}
 .topbar{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:18px}
 .whoami{text-align:right;flex-shrink:0}
+.whoami-fixed{font-family:var(--display);font-size:14px;font-weight:600;color:var(--ink);
+  background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:8px 13px;
+  margin-top:4px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .whoami select{font-family:var(--display);font-size:14px;font-weight:600;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:7px 12px;margin-top:4px;max-width:150px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
 .sec{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px;gap:10px}
@@ -50,6 +53,12 @@ h1.title{font-size:30px;font-weight:800;letter-spacing:-.03em;margin:4px 0 0;lin
 .beam-row:last-child{border-bottom:0}
 .beam-meta{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px}
 .beam-name{font-size:14px;font-weight:600;letter-spacing:-.01em}
+.pres{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--line);
+  margin-right:7px;vertical-align:1px;flex-shrink:0}
+.pres.on{background:var(--blue);box-shadow:0 0 0 2px var(--blue-wash)}
+.seen{font-family:var(--mono);font-size:9px;letter-spacing:.06em;color:var(--muted);margin-left:7px;font-weight:400}
+.seen.live{color:var(--blue)}
+.seen.never{color:var(--amber)}
 .beam-name .you{font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:var(--muted);margin-left:6px}
 .beam-val{font-family:var(--mono);font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
 .beam-val.up{color:var(--blue)} .beam-val.down{color:var(--red)} .beam-val.flat{color:var(--muted)}
@@ -278,6 +287,7 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
     <div class="whoami">
       <div class="eyebrow">You are</div>
       <select id="whoami" aria-label="Which flatmate are you"></select>
+      <div id="whoamiFixed" class="whoami-fixed" style="display:none"></div>
     </div>
   </div>
 
@@ -297,6 +307,7 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
     <div class="card">
       <div class="sec">
         <h2>Where everyone stands</h2>
+        <span class="eyebrow" id="hereCount"></span>
       </div>
       <div id="beam"></div>
       <div class="beam-scale"><span>Owes the flat</span><span>Owed by the flat</span></div>
@@ -569,18 +580,23 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
       </div>
       <p class="hint">Each phone turns these on separately. Tap one to switch it off.</p>
     </div>
-    <label class="label" style="margin-top:12px" for="vapidKey">Web push key</label>
-    <input class="input" id="vapidKey" type="text" placeholder="Paste the key pair from Firebase → Cloud Messaging" autocomplete="off">
-    <p class="hint">Set once by one person; it reaches everyone else automatically.</p>
+    <div id="devVapid">
+      <label class="label" style="margin-top:12px" for="vapidKey">Web push key</label>
+      <input class="input" id="vapidKey" type="text" placeholder="Paste the key pair from Firebase → Cloud Messaging" autocomplete="off">
+      <p class="hint">Set once by one person; it reaches everyone else automatically.</p>
+    </div>
   </div>
 
+  <div id="devOcr">
   <div class="divider"></div>
 
   <div class="field"><span class="label">Receipt reader — optional</span>
     <p class="hint" style="margin-top:0">Paste the address of your receipt-reading Worker. One person sets this and it reaches everyone. Leave blank and receipts still attach, they just won't be read automatically.</p>
     <input class="input" id="ocrUrl" type="url" placeholder="https://flat-receipts.yourname.workers.dev" autocomplete="off" style="margin-top:8px">
   </div>
+  </div>
 
+  <div id="devSync">
   <div class="divider"></div>
 
   <div class="field"><span class="label">Sync between phones</span>
@@ -591,6 +607,9 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
     <input class="input" id="roomCode" type="text" placeholder="e.g. coppermaker-109-7f3a" autocomplete="off">
     <p class="hint">Anyone who knows the room code can read and edit the ledger, so add a few random characters to the end.</p>
   </div>
+  </div>
+
+  <p class="hint" id="devHidden" style="display:none">Sync, push and receipt-reader settings are hidden. Tap the Flat Ledger title seven times to show them.</p>
 
   <div class="err" id="setErr"></div>
   <button class="btn primary" id="saveSettings" style="width:100%;padding:13px;font-size:15px">Save settings</button>
@@ -601,11 +620,24 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 'use strict';
 
 var LS='flatledger:v2', LS_ME='flatledger:me', LS_FB='flatledger:fb', LS_ROOM='flatledger:room',
-    LS_OUT='flatledger:outbox', LS_OCR='flatledger:ocr', LS_VAPID='flatledger:vapid';
+    LS_OUT='flatledger:outbox', LS_OCR='flatledger:ocr', LS_VAPID='flatledger:vapid',
+    LS_DEV='flatledger:dev', LS_MESET='flatledger:meset', LS_DEVICE='flatledger:device';
 var CATS=['Rent','Bills','Groceries','Eating out','Household','Transport','Other'];
 
 var state=null, me=null, db=null, fbRefs=null, online=false, suppress=false, searchTerm='', showVoid=false;
 var outbox=[], flushing=false, flushTimer=null;
+/* Developer mode hides the three settings a flatmate could break by accident:
+   the Firebase config, the push key and the receipt-reader address. It is per
+   phone, not shared. This is tidiness, not security — the values still live in
+   localStorage and the source is public, so it stops mistakes, not snooping. */
+var devMode=false;
+/* Who you are is chosen once per phone and then fixed. If anyone can switch
+   to anyone, the payment rules and the "added by" trail mean nothing. Change
+   it later through developer mode. */
+var meLocked=false;
+/* Presence is keyed by member AND device, so one person on a phone and a laptop
+   doesn't knock themselves offline when they close one of them. */
+var presence={}, deviceId=null;
 var form={cat:'Groceries',paidBy:null,split:{},mode:'equal',custom:{},tplId:null};
 var tplForm=null;
 
@@ -633,6 +665,67 @@ function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){retur
 function today(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function thisPeriod(){return today().slice(0,7);}
 // You can't have paid for something that hasn't happened yet.
+function getDeviceId(){
+  try{
+    var d=localStorage.getItem(LS_DEVICE);
+    if(!d){ d=uid('d'); localStorage.setItem(LS_DEVICE,d); }
+    return d;
+  }catch(e){ return uid('d'); }
+}
+// "3 minutes ago" reads better than a timestamp for something this glanceable.
+function since(ts){
+  if(!ts)return '';
+  var s=Math.max(0,Math.floor((Date.now()-ts)/1000));
+  if(s<90)return 'just now';
+  var m=Math.floor(s/60); if(m<60)return m+'m ago';
+  var h=Math.floor(m/60); if(h<24)return h+'h ago';
+  var d=Math.floor(h/24); if(d<7)return d+'d ago';
+  return new Date(ts).toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+}
+// Called when you change who you are, so the old name doesn't sit there
+// looking permanently online.
+function claimPresence(){
+  if(!fbRefs||!fbRefs.presence||!deviceId)return;
+  Object.keys(presence).forEach(function(mid){
+    if(mid!==me&&presence[mid]&&presence[mid][deviceId])
+      fbRefs.remove(fbRefs.child(fbRefs.child(fbRefs.presence,mid),deviceId)).catch(function(){});
+  });
+  var mine=fbRefs.child(fbRefs.child(fbRefs.presence,me),deviceId);
+  fbRefs.onDisconnect(mine).set({online:false,at:fbRefs.serverTimestamp()});
+  fbRefs.set(mine,{online:true,at:fbRefs.serverTimestamp()}).catch(function(){});
+}
+function presenceOf(memberId){
+  var devs=presence[memberId];
+  if(!devs)return {joined:false,online:false,at:0};
+  var online=false, last=0;
+  Object.keys(devs).forEach(function(k){
+    var d=devs[k]||{};
+    if(d.online)online=true;
+    if(d.at&&d.at>last)last=d.at;
+  });
+  return {joined:true,online:online,at:last};
+}
+function loadDev(){
+  try{ devMode = localStorage.getItem(LS_DEV)==='1'; }catch(e){ devMode=false; }
+  try{ meLocked = localStorage.getItem(LS_MESET)==='1'; }catch(e){ meLocked=false; }
+}
+function lockMe(){
+  meLocked=true;
+  try{ localStorage.setItem(LS_MESET,'1'); }catch(e){}
+}
+function setDev(on){
+  devMode=!!on;
+  try{ localStorage.setItem(LS_DEV, devMode?'1':'0'); }catch(e){}
+  drawDev();
+}
+function drawDev(){
+  render();                       // the identity picker appears or disappears with it
+  ['devVapid','devOcr','devSync'].forEach(function(id){
+    var el=document.getElementById(id); if(el)el.style.display=devMode?'block':'none';
+  });
+  var note=document.getElementById('devHidden');
+  if(note)note.style.display=devMode?'none':'block';
+}
 function capDate(id){
   var el=document.getElementById(id); if(!el)return;
   el.max=today();
@@ -834,12 +927,30 @@ async function connect(){
     var base='flats/'+room.replace(/[.#$\[\]\/]/g,'_');
     fbRefs={
       set:dbMod.set, remove:dbMod.remove, child:dbMod.child, get:dbMod.get,
+      onDisconnect:dbMod.onDisconnect, serverTimestamp:dbMod.serverTimestamp, ref:dbMod.ref,
       meta:dbMod.ref(database,base+'/meta'),
       entries:dbMod.ref(database,base+'/entries'),
       // Deliberately NOT subscribed with onValue — fetched one at a time, on tap.
       photos:dbMod.ref(database,base+'/photos'),
-      tokens:dbMod.ref(database,base+'/tokens')
+      tokens:dbMod.ref(database,base+'/tokens'),
+      presence:dbMod.ref(database,base+'/presence')
     };
+
+    /* Presence. onDisconnect is registered with the server, so it still marks
+       this device offline if the phone loses signal or the battery dies —
+       which a plain "goodbye" write on page close would not. */
+    deviceId=getDeviceId();
+    var connRef=dbMod.ref(database,'.info/connected');
+    dbMod.onValue(connRef,function(snap){
+      if(snap.val()!==true)return;
+      var mine=dbMod.child(dbMod.child(fbRefs.presence,me),deviceId);
+      dbMod.onDisconnect(mine).set({online:false,at:dbMod.serverTimestamp()});
+      dbMod.set(mine,{online:true,at:dbMod.serverTimestamp()});
+    });
+    dbMod.onValue(fbRefs.presence,function(snap){
+      presence=snap.val()||{};
+      render();
+    });
     dbMod.onValue(fbRefs.meta,function(snap){
       var v=snap.val(); if(!v)return;
       state.flatName=v.flatName||state.flatName;
@@ -905,10 +1016,16 @@ function simplify(b){
 function render(){
   document.getElementById('flatName').textContent=state.flatName;
 
-  var who=document.getElementById('whoami'); who.innerHTML='';
+  var who=document.getElementById('whoami'), fixed=document.getElementById('whoamiFixed');
+  who.innerHTML='';
   activeMembers().forEach(function(m){var o=document.createElement('option');o.value=m.id;o.textContent=m.name;who.appendChild(o);});
   if(!me||memberById(me).active===false)me=(activeMembers()[0]||{}).id;
   who.value=me;
+  // Picker only while unchosen, or when developer mode is on.
+  var canSwitch = devMode || !meLocked;
+  who.style.display = canSwitch?'':'none';
+  fixed.style.display = canSwitch?'none':'block';
+  fixed.textContent = memberById(me).name;
 
   renderAlerts();
 
@@ -943,13 +1060,28 @@ function render(){
     if(m.active===false&&!b[m.id])return;
     var v=b[m.id]||0, pct=Math.min(48,(Math.abs(v)/max)*48), dir=v>0?'up':v<0?'down':'flat';
     var row=document.createElement('div'); row.className='beam-row';
-    row.innerHTML='<div class="beam-meta"><div class="beam-name">'+esc(m.name)+
-      (m.id===me?'<span class="you">YOU</span>':'')+'</div>'+
+    var pr=presenceOf(m.id), seenTxt, seenCls;
+    if(m.id===me){ seenTxt='you'; seenCls=''; }
+    else if(!pr.joined){ seenTxt='not set up yet'; seenCls='never'; }
+    else if(pr.online){ seenTxt='online'; seenCls='live'; }
+    else { seenTxt=pr.at?'seen '+since(pr.at):'offline'; seenCls=''; }
+    row.innerHTML='<div class="beam-meta"><div class="beam-name">'+
+      '<span class="pres'+(pr.online&&m.id!==me?' on':'')+'"></span>'+esc(m.name)+
+      (m.id===me?'<span class="you">YOU</span>':'')+
+      '<span class="seen '+seenCls+'">'+esc(seenTxt)+'</span></div>'+
       '<div class="beam-val '+dir+'">'+(v===0?'settled':(v>0?'+':'−')+money(Math.abs(v)))+'</div></div>'+
       '<div class="beam-track">'+(v===0?'':'<div class="beam-fill '+dir+'" style="'+
       (v>0?'width:'+pct+'%':'width:'+pct+'%;left:'+(50-pct)+'%')+'"></div>')+'</div>';
     beam.appendChild(row);
   });
+
+  var hereN=state.members.filter(function(m){
+    return m.active!==false && (m.id===me || presenceOf(m.id).online); }).length;
+  var joinedN=state.members.filter(function(m){
+    return m.active!==false && (m.id===me || presenceOf(m.id).joined); }).length;
+  var totalN=activeMembers().length;
+  document.getElementById('hereCount').textContent =
+    joinedN<totalN ? joinedN+' of '+totalN+' set up' : hereN+' of '+totalN+' online';
 
   // settle
   var s=simplify(b), se=document.getElementById('settle'); se.innerHTML='';
@@ -2011,7 +2143,7 @@ function openSettings(){
     row.appendChild(idx);row.appendChild(inp);row.appendChild(tog);box.appendChild(row);
   });
   drawSettingsTemplates(); drawSettingsPresets();
-  drawNotify();
+  drawNotify(); drawDev();
   document.getElementById('ocrUrl').value=state.ocrUrl||localStorage.getItem(LS_OCR)||'';
   document.getElementById('fbConfig').value=localStorage.getItem(LS_FB)||'';
   document.getElementById('roomCode').value=localStorage.getItem(LS_ROOM)||'';
@@ -2109,8 +2241,38 @@ function wire(){
   document.getElementById('csvDownload').onclick=downloadCSV;
   document.getElementById('csvCopy').onclick=copyCSV;
 
+  // Seven taps on the title toggles developer mode. Deliberately obscure:
+  // nobody finds it by accident, and it needs no password to be useful.
+  var tapCount=0, tapTimer=null;
+  document.querySelector('h1.title').onclick=function(){
+    tapCount++;
+    clearTimeout(tapTimer);
+    tapTimer=setTimeout(function(){tapCount=0;},1200);
+    if(tapCount>=7){
+      tapCount=0;
+      setDev(!devMode);
+      status(devMode?'Developer mode on':'Developer mode off');
+      setTimeout(renderSync,2500);
+    }
+  };
+
   document.getElementById('whoami').onchange=function(e){
-    me=e.target.value; try{localStorage.setItem(LS_ME,me);}catch(x){} render(); };
+    var picked=e.target.value, prev=me;
+    if(devMode||meLocked){        // already settled, or you're the developer
+      me=picked; try{localStorage.setItem(LS_ME,me);}catch(x){} claimPresence(); render(); return;
+    }
+    // First choice on this phone fixes it, so make sure they meant it.
+    ask({title:'You are '+memberById(picked).name+'?',
+         message:'This phone stays as '+memberById(picked).name+
+                 '. Everything you add is recorded under that name, and only you can confirm payments sent to you.',
+         okLabel:'Yes, that\u2019s me', cancelLabel:'Back'},
+        function(v,ok){
+          if(!ok){ me=prev; render(); return; }
+          me=picked; lockMe();
+          try{localStorage.setItem(LS_ME,me);}catch(x){}
+          claimPresence(); render();
+        });
+  };
 
   document.getElementById('modeEqual').onclick=function(){form.mode='equal';drawExpenseChips();drawSplitDetail();};
   document.getElementById('modeCustom').onclick=function(){form.mode='custom';drawExpenseChips();drawSplitDetail();};
@@ -2296,23 +2458,27 @@ function wire(){
       var m=memberById(inp.dataset.mid), v=inp.value.trim(); if(v)m.name=v; });
     state.flatName=document.getElementById('flatNameInput').value.trim()||'Our flat';
 
-    var vap=document.getElementById('vapidKey').value.trim();
-    state.vapid=vap;
-    try{ localStorage.setItem(LS_VAPID,vap); }catch(e){}
+    // Hidden fields are left completely alone, so a flatmate saving Settings
+    // can never blank the shared sync or reader configuration.
+    var cfg=null, room=null, oldCfg=localStorage.getItem(LS_FB)||'', oldRoom=localStorage.getItem(LS_ROOM)||'';
+    if(devMode){
+      var vap=document.getElementById('vapidKey').value.trim();
+      state.vapid=vap;
+      try{ localStorage.setItem(LS_VAPID,vap); }catch(e){}
 
-    var ocr=document.getElementById('ocrUrl').value.trim().replace(/\/+$/,'');
-    if(ocr&&!/^https:\/\/\S+$/.test(ocr)){
-      document.getElementById('setErr').textContent='The reader address must start with https://';return;}
-    state.ocrUrl=ocr;                       // goes out with the rest of the flat settings
-    try{ localStorage.setItem(LS_OCR,ocr); }catch(e){}   // so it still works before sync
+      var ocr=document.getElementById('ocrUrl').value.trim().replace(/\/+$/,'');
+      if(ocr&&!/^https:\/\/\S+$/.test(ocr)){
+        document.getElementById('setErr').textContent='The reader address must start with https://';return;}
+      state.ocrUrl=ocr;                       // goes out with the rest of the flat settings
+      try{ localStorage.setItem(LS_OCR,ocr); }catch(e){}   // so it still works before sync
 
-    var cfg=document.getElementById('fbConfig').value.trim();
-    var room=document.getElementById('roomCode').value.trim();
-    var oldCfg=localStorage.getItem(LS_FB)||'', oldRoom=localStorage.getItem(LS_ROOM)||'';
-    if(cfg){ try{JSON.parse(cfg);}catch(e){document.getElementById('setErr').textContent='Firebase config is not valid JSON.';return;} }
-    try{ localStorage.setItem(LS_FB,cfg); localStorage.setItem(LS_ROOM,room); }catch(e){}
+      cfg=document.getElementById('fbConfig').value.trim();
+      room=document.getElementById('roomCode').value.trim();
+      if(cfg){ try{JSON.parse(cfg);}catch(e){document.getElementById('setErr').textContent='Firebase config is not valid JSON.';return;} }
+      try{ localStorage.setItem(LS_FB,cfg); localStorage.setItem(LS_ROOM,room); }catch(e){}
+    }
     pushMeta(); render(); closeSheets();
-    if(cfg!==oldCfg||room!==oldRoom) location.reload();
+    if(devMode && (cfg!==oldCfg||room!==oldRoom)) location.reload();
   };
 }
 
@@ -2323,11 +2489,15 @@ function wire(){
   if(navigator.storage&&navigator.storage.persist){
     try{ navigator.storage.persist(); }catch(e){}
   }
-  loadOutbox(); loadPrefs();
+  loadOutbox(); loadPrefs(); loadDev();
   state=loadLocal()||blank();
   try{ me=localStorage.getItem(LS_ME); }catch(e){}
   if(!me||memberById(me).active===false)me=(activeMembers()[0]||{}).id;
-  wire(); render();
+  wire();
+  // A phone that already has a name saved from before this change is treated
+  // as settled — no point asking them to pick again.
+  if(!meLocked){ try{ if(localStorage.getItem(LS_ME)) lockMe(); }catch(e){} }
+  render();
   if(outbox.length)renderSync();
   else status(localStorage.getItem(LS_FB)?'Connecting…':'This phone only — set up sync in Settings');
   await connect();
@@ -2335,6 +2505,8 @@ function wire(){
   document.addEventListener('visibilitychange', function(){ if(!document.hidden)flush(); });
   window.addEventListener('focus', function(){ flush(); });
   if(outbox.length)scheduleFlush();
+  // Relative times drift while the app sits open; a quiet refresh keeps them true.
+  setInterval(function(){ if(!document.hidden)render(); },60000);
 
   if('serviceWorker' in navigator){ try{ navigator.serviceWorker.register('sw.js'); }catch(e){} }
 })();
