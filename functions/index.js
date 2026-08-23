@@ -8,9 +8,13 @@
 
 const { onValueWritten } = require('firebase-functions/v2/database');
 const { setGlobalOptions } = require('firebase-functions/v2');
-const admin = require('firebase-admin');
+/* firebase-admin v13 removed the old admin.database() / admin.messaging()
+ * namespace. These are the modular equivalents. */
+const { initializeApp } = require('firebase-admin/app');
+const { getDatabase } = require('firebase-admin/database');
+const { getMessaging } = require('firebase-admin/messaging');
 
-admin.initializeApp();
+initializeApp();
 
 // Keep it small and close to the database. maxInstances stops a runaway
 // loop from ever becoming an expensive one.
@@ -78,7 +82,7 @@ exports.onEntryWritten = onValueWritten(
     if (!after) return;                                   // deleted outright
 
     const room = event.params.room;
-    const db = admin.database();
+    const db = getDatabase();
 
     const [metaSnap, tokenSnap] = await Promise.all([
       db.ref(`/flats/${room}/meta`).get(),
@@ -105,7 +109,7 @@ exports.onEntryWritten = onValueWritten(
         : { title: `${mine.length} updates`, body: mine.map(m => m.title).join(' · '), tag: 'batch' };
 
       sends.push(
-        admin.messaging().send({
+        getMessaging().send({
           token,
           data: { title: msg.title, body: msg.body, tag: msg.tag },
           webpush: { headers: { Urgency: 'high', TTL: '86400' } }
