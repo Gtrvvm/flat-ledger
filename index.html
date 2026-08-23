@@ -200,6 +200,34 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 .trail.del{color:var(--red)}
 .voidbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 11px;background:var(--paper);border-radius:9px;margin-bottom:12px}
 .voidbar span{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.stmt-nav{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px}
+.stmt-nav button{width:38px;height:38px;border-radius:9px;border:1px solid var(--line);background:var(--card);
+  font-size:17px;color:var(--ink);cursor:pointer;flex-shrink:0}
+.stmt-nav button:disabled{opacity:.3;cursor:default}
+.stmt-month{font-size:17px;font-weight:800;letter-spacing:-.02em;text-align:center;flex:1}
+.stmt-hero{background:var(--paper);border-radius:11px;padding:15px;margin-bottom:16px}
+.stmt-hero .k{font-family:var(--mono);font-size:9px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted)}
+.stmt-hero .v{font-family:var(--mono);font-size:30px;font-weight:800;letter-spacing:-.03em;
+  font-variant-numeric:tabular-nums;margin-top:4px}
+.stmt-hero .sub{font-size:12px;color:var(--muted);margin-top:6px}
+.stmt-sec{font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--muted);margin:20px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line-soft)}
+.cat-row{margin-bottom:11px}
+.cat-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px}
+.cat-name{font-size:13px;font-weight:600}
+.cat-amt{font-family:var(--mono);font-size:12px;font-weight:600;font-variant-numeric:tabular-nums}
+.cat-bar{height:6px;background:var(--line-soft);border-radius:3px;overflow:hidden}
+.cat-fill{height:100%;background:var(--ink);border-radius:3px}
+.cat-pc{font-family:var(--mono);font-size:10px;color:var(--muted);margin-left:6px}
+.per-row{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px dashed var(--line-soft)}
+.per-row:last-child{border-bottom:0}
+.per-name{flex:1;font-size:13px;font-weight:600;min-width:0}
+.per-fig{font-family:var(--mono);font-size:12px;width:72px;text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
+.per-net{font-family:var(--mono);font-size:12px;font-weight:700;width:76px;text-align:right;font-variant-numeric:tabular-nums}
+.per-net.up{color:var(--blue)} .per-net.down{color:var(--red)}
+.per-head{display:flex;gap:8px;font-family:var(--mono);font-size:8px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted);padding-bottom:6px}
+.per-head .a{flex:1} .per-head .b{width:72px;text-align:right} .per-head .c{width:76px;text-align:right}
 .searchbox{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:9px;padding:8px 11px;margin-bottom:12px}
 .searchbox input{flex:1;border:0;outline:none;background:none;font-family:var(--display);font-size:14px;color:var(--ink);min-width:0}
 .searchbox input::-webkit-search-cancel-button{display:none}
@@ -265,7 +293,10 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
     <div class="card">
       <div class="sec">
         <h2>The ledger</h2>
-        <button class="btn small" id="exportBtn">Export CSV</button>
+        <span style="display:flex;gap:6px">
+          <button class="btn small" id="stmtBtn">Statement</button>
+          <button class="btn small" id="exportBtn">Export CSV</button>
+        </span>
       </div>
       <div class="searchbox">
         <span class="mag" aria-hidden="true">&#128269;</span>
@@ -432,6 +463,17 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
   <button class="btn" data-close style="width:100%;padding:13px;margin-top:4px">Cancel</button>
 </div>
 
+<!-- MONTHLY STATEMENT -->
+<div class="sheet" id="sheetStmt" role="dialog" aria-label="Monthly statement">
+  <div class="sheet-head"><h3>Statement</h3><button class="btn small" data-close>Close</button></div>
+  <div class="stmt-nav">
+    <button id="stmtPrev" aria-label="Previous month">&#8249;</button>
+    <div class="stmt-month" id="stmtMonth"></div>
+    <button id="stmtNext" aria-label="Next month">&#8250;</button>
+  </div>
+  <div id="stmtBody"></div>
+</div>
+
 <!-- CSV -->
 <div class="sheet" id="sheetCsv" role="dialog" aria-label="Export">
   <div class="sheet-head"><h3>Export</h3><button class="btn small" data-close>Close</button></div>
@@ -523,6 +565,12 @@ function uid(p){return p+Date.now().toString(36)+Math.random().toString(36).slic
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function today(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function thisPeriod(){return today().slice(0,7);}
+// You can't have paid for something that hasn't happened yet.
+function capDate(id){
+  var el=document.getElementById(id); if(!el)return;
+  el.max=today();
+  if(el.value>el.max)el.value=el.max;
+}
 
 /* ---------- default state ---------- */
 function blank(){
@@ -1129,7 +1177,7 @@ function askDone(ok){
 }
 function openSheet(id){document.getElementById('scrim').classList.add('open');document.getElementById(id).classList.add('open');}
 function closeSheets(){document.getElementById('scrim').classList.remove('open');
-  ['sheetExpense','sheetPay','sheetSettings','sheetTpl','sheetCsv','sheetAct','sheetPreset','sheetAsk'].forEach(function(i){document.getElementById(i).classList.remove('open');});}
+  ['sheetExpense','sheetPay','sheetSettings','sheetTpl','sheetCsv','sheetAct','sheetPreset','sheetAsk','sheetStmt'].forEach(function(i){document.getElementById(i).classList.remove('open');});}
 
 function openExpense(){
   form={cat:'Groceries',paidBy:me,split:{},mode:'equal',custom:{},weights:{},tplId:null,period:null,editingId:null};
@@ -1139,6 +1187,7 @@ function openExpense(){
   document.getElementById('desc').value='';
   document.getElementById('note').value='';
   document.getElementById('date').value=today();
+  capDate('date');
   document.getElementById('expErr').textContent='';
   document.getElementById('saveExpense').textContent='Save expense';
   drawExpenseChips(); drawSplitDetail(); openSheet('sheetExpense');
@@ -1157,6 +1206,7 @@ function editEntry(e){
   document.getElementById('desc').value=e.desc||'';
   document.getElementById('note').value=e.note||'';
   document.getElementById('date').value=e.date||today();
+  capDate('date');
   document.getElementById('expErr').textContent='';
   document.getElementById('saveExpense').textContent='Save changes';
   drawExpenseChips(); drawSplitDetail(); openSheet('sheetExpense');
@@ -1168,6 +1218,7 @@ function openExpenseFromTemplate(t){
   document.getElementById('desc').value=t.name+' · '+new Date().toLocaleDateString('en-GB',{month:'long',year:'numeric'});
   document.getElementById('note').value='';
   document.getElementById('date').value=today();
+  capDate('date');
   document.getElementById('expErr').textContent='';
   document.getElementById('saveExpense').textContent='Save expense';
   drawExpenseChips(); drawSplitDetail(); openSheet('sheetExpense');
@@ -1183,6 +1234,7 @@ function repeatEntry(e){
   document.getElementById('desc').value=e.desc||'';
   document.getElementById('note').value=e.note||'';
   document.getElementById('date').value=today();
+  capDate('date');
   document.getElementById('expErr').textContent='';
   document.getElementById('saveExpense').textContent='Save expense';
   drawExpenseChips(); drawSplitDetail(); openSheet('sheetExpense');
@@ -1372,6 +1424,112 @@ function drawSettingsPresets(){
 }
 
 var payDir='sent';
+/* ---------- monthly statement ---------- */
+var stmtPeriod=null;
+function monthLabel(p){
+  var d=new Date(p+'-01T12:00:00');
+  return d.toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+}
+function shiftPeriod(p,by){
+  var d=new Date(+p.slice(0,4), +p.slice(5,7)-1+by, 1);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+}
+function monthsWithData(){
+  var set={};
+  liveEntries().forEach(function(e){ set[String(e.date).slice(0,7)]=true; });
+  set[thisPeriod()]=true;
+  return Object.keys(set).sort();
+}
+function statementFor(period){
+  var ex=[],pay=[];
+  liveEntries().forEach(function(e){
+    if(String(e.date).slice(0,7)!==period)return;
+    (e.type==='payment'?pay:ex).push(e);
+  });
+  var total=0, byCat={}, per={};
+  state.members.forEach(function(m){ per[m.id]={paid:0,share:0}; });
+  ex.forEach(function(e){
+    total+=e.amount;
+    var c=e.category||'Other';
+    byCat[c]=(byCat[c]||0)+e.amount;
+    if(!per[e.paidBy])per[e.paidBy]={paid:0,share:0};
+    per[e.paidBy].paid+=e.amount;
+    Object.keys(e.shares||{}).forEach(function(id){
+      if(!per[id])per[id]={paid:0,share:0};
+      per[id].share+=e.shares[id];
+    });
+  });
+  var cats=Object.keys(byCat).map(function(c){return {name:c,amount:byCat[c]};})
+    .sort(function(a,b){return b.amount-a.amount;});
+  return {period:period,total:total,cats:cats,per:per,count:ex.length,payments:pay};
+}
+function openStatement(){ stmtPeriod=thisPeriod(); drawStatement(); openSheet('sheetStmt'); }
+function drawStatement(){
+  var d=statementFor(stmtPeriod), months=monthsWithData();
+  document.getElementById('stmtMonth').textContent=monthLabel(stmtPeriod);
+  document.getElementById('stmtPrev').disabled = stmtPeriod<=months[0];
+  document.getElementById('stmtNext').disabled = stmtPeriod>=thisPeriod();
+
+  var box=document.getElementById('stmtBody'); box.innerHTML='';
+  if(!d.count&&!d.payments.length){
+    box.innerHTML='<div class="empty">Nothing logged in '+esc(monthLabel(stmtPeriod))+'.</div>';
+    return;
+  }
+  var mine=d.per[me]||{paid:0,share:0};
+  var hero=document.createElement('div'); hero.className='stmt-hero';
+  hero.innerHTML='<div class="k">Total spent</div><div class="v">'+money(d.total)+'</div>'+
+    '<div class="sub">'+d.count+' expense'+(d.count===1?'':'s')+' \u00B7 your share '+money(mine.share)+'</div>';
+  box.appendChild(hero);
+
+  if(d.cats.length){
+    var h=document.createElement('div'); h.className='stmt-sec'; h.textContent='Where it went';
+    box.appendChild(h);
+    d.cats.forEach(function(c){
+      var pc=d.total?Math.round(c.amount/d.total*100):0;
+      var row=document.createElement('div'); row.className='cat-row';
+      row.innerHTML='<div class="cat-top"><span class="cat-name">'+esc(c.name)+
+        '<span class="cat-pc">'+pc+'%</span></span>'+
+        '<span class="cat-amt">'+money(c.amount)+'</span></div>'+
+        '<div class="cat-bar"><div class="cat-fill" style="width:'+pc+'%"></div></div>';
+      box.appendChild(row);
+    });
+  }
+
+  var h2=document.createElement('div'); h2.className='stmt-sec'; h2.textContent='Who paid what';
+  box.appendChild(h2);
+  var head=document.createElement('div'); head.className='per-head';
+  head.innerHTML='<span class="a"></span><span class="b">Paid</span><span class="b">Their share</span><span class="c">Balance</span>';
+  box.appendChild(head);
+  state.members.forEach(function(m){
+    var p=d.per[m.id]||{paid:0,share:0};
+    if(!p.paid&&!p.share)return;
+    var net=p.paid-p.share, dir=net>0?'up':net<0?'down':'';
+    var row=document.createElement('div'); row.className='per-row';
+    row.innerHTML='<span class="per-name">'+esc(m.name)+(m.id===me?' (you)':'')+'</span>'+
+      '<span class="per-fig">'+money(p.paid)+'</span>'+
+      '<span class="per-fig">'+money(p.share)+'</span>'+
+      '<span class="per-net '+dir+'">'+(net===0?'\u2014':(net>0?'+':'\u2212')+money(Math.abs(net)))+'</span>';
+    box.appendChild(row);
+  });
+  var note=document.createElement('p'); note.className='hint';
+  note.textContent='Balance is what each person paid minus what they owed, for this month alone. Transfers between you are listed separately.';
+  box.appendChild(note);
+
+  if(d.payments.length){
+    var h3=document.createElement('div'); h3.className='stmt-sec'; h3.textContent='Transfers this month';
+    box.appendChild(h3);
+    d.payments.forEach(function(e){
+      var row=document.createElement('div'); row.className='per-row';
+      var to=Object.keys(e.shares||{}).map(function(id){return memberById(id).name;}).join(', ');
+      row.innerHTML='<span class="per-name">'+esc(memberById(e.paidBy).name)+
+        ' <span style="color:var(--muted)">\u2192</span> '+esc(to)+
+        (e.status==='pending'?' <span style="color:var(--amber)">pending</span>':'')+'</span>'+
+        '<span class="per-net">'+money(e.amount)+'</span>';
+      box.appendChild(row);
+    });
+  }
+}
+
 function openPay(dir,otherId,amount){
   payDir=(dir==='got')?'got':'sent';
   var sel=document.getElementById('payOther'); sel.innerHTML='';
@@ -1380,6 +1538,7 @@ function openPay(dir,otherId,amount){
   if(otherId&&otherId!==me)sel.value=otherId;
   document.getElementById('payAmount').value=amount?plain(amount):'';
   document.getElementById('payDate').value=today();
+  capDate('payDate');
   document.getElementById('payErr').textContent='';
   drawPayDir();
   openSheet('sheetPay');
@@ -1516,6 +1675,9 @@ function wire(){
   document.getElementById('payBtn').onclick=function(){openPay('sent',null,0);};
   document.getElementById('settingsBtn').onclick=openSettings;
   document.getElementById('exportBtn').onclick=openCSV;
+  document.getElementById('stmtBtn').onclick=openStatement;
+  document.getElementById('stmtPrev').onclick=function(){stmtPeriod=shiftPeriod(stmtPeriod,-1);drawStatement();};
+  document.getElementById('stmtNext').onclick=function(){stmtPeriod=shiftPeriod(stmtPeriod,1);drawStatement();};
   document.getElementById('csvDownload').onclick=downloadCSV;
   document.getElementById('csvCopy').onclick=copyCSV;
 
@@ -1557,6 +1719,8 @@ function wire(){
     if(!form.paidBy){err.textContent='Pick who paid.';return;}
     var ids=activeMembers().filter(function(m){return form.split[m.id];}).map(function(m){return m.id;});
     if(!ids.length){err.textContent='Pick at least one person to split between.';return;}
+    if((document.getElementById('date').value||today())>today()){
+      err.textContent='That date is in the future — pick today or earlier.';return;}
     var shares, weights=null;
     if(form.mode==='custom'){
       shares={};var sum=0;
@@ -1612,6 +1776,8 @@ function wire(){
     var other=document.getElementById('payOther').value;
     if(isNaN(amt)||amt<=0){err.textContent='Enter an amount above zero.';return;}
     if(!other||other===me){err.textContent='Pick the other person.';return;}
+    if((document.getElementById('payDate').value||today())>today()){
+      err.textContent='That date is in the future — pick today or earlier.';return;}
     var from = payDir==='sent'? me : other;
     var to   = payDir==='sent'? other : me;
     var sh={}; sh[to]=amt;
