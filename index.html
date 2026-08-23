@@ -36,6 +36,13 @@ body{
 h1.title{font-size:30px;font-weight:800;letter-spacing:-.03em;margin:4px 0 0;line-height:1}
 .topbar{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:18px}
 .whoami{text-align:right;flex-shrink:0}
+.setup{border-color:var(--blue);background:var(--blue-wash)}
+.setup-title{font-size:19px;font-weight:800;letter-spacing:-.02em}
+.setup-sub{font-size:13px;color:var(--ink-soft);line-height:1.5;margin:6px 0 14px}
+.setup-btn{display:block;width:100%;text-align:left;font-family:var(--display);font-size:16px;
+  font-weight:700;padding:14px 15px;margin-bottom:8px;border-radius:10px;border:1px solid var(--line);
+  background:var(--card);color:var(--ink);cursor:pointer}
+.setup-btn:active{background:var(--paper)}
 .whoami-fixed{font-family:var(--display);font-size:14px;font-weight:600;color:var(--ink);
   background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:8px 13px;
   margin-top:4px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -292,6 +299,12 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
   </div>
 
   <div id="app">
+    <div class="card setup" id="setupCard" style="display:none">
+      <div class="setup-title">Who are you?</div>
+      <p class="setup-sub">This phone stays as whoever you pick. Everything you add is recorded under that name, and only you can confirm payments sent to you.</p>
+      <div id="setupNames"></div>
+    </div>
+
     <div id="alerts"></div>
 
     <div class="card position">
@@ -1021,10 +1034,20 @@ function render(){
   activeMembers().forEach(function(m){var o=document.createElement('option');o.value=m.id;o.textContent=m.name;who.appendChild(o);});
   if(!me||memberById(me).active===false)me=(activeMembers()[0]||{}).id;
   who.value=me;
-  // Picker only while unchosen, or when developer mode is on.
-  var canSwitch = devMode || !meLocked;
-  who.style.display = canSwitch?'':'none';
-  fixed.style.display = canSwitch?'none':'block';
+
+  /* Until this phone has been claimed there is no "you", so the picker and
+     everything written from your point of view stay out of the way. Showing
+     the first flatmate's balance under "You are owed" would be a lie. */
+  var needsSetup = !meLocked;
+  document.getElementById('setupCard').style.display = needsSetup?'block':'none';
+  document.querySelector('.whoami').style.display = needsSetup?'none':'block';
+  document.querySelector('.card.position').style.display = needsSetup?'none':'block';
+  document.getElementById('alerts').style.display = needsSetup?'none':'block';
+  if(needsSetup)drawSetup();
+
+  // Picker only in developer mode; otherwise the name is fixed.
+  who.style.display = devMode?'':'none';
+  fixed.style.display = devMode?'none':'block';
   fixed.textContent = memberById(me).name;
 
   renderAlerts();
@@ -1061,14 +1084,14 @@ function render(){
     var v=b[m.id]||0, pct=Math.min(48,(Math.abs(v)/max)*48), dir=v>0?'up':v<0?'down':'flat';
     var row=document.createElement('div'); row.className='beam-row';
     var pr=presenceOf(m.id), seenTxt, seenCls;
-    if(m.id===me){ seenTxt='you'; seenCls=''; }
+    if(m.id===me){ seenTxt=''; seenCls=''; }        // the YOU badge already says it
     else if(!pr.joined){ seenTxt='not set up yet'; seenCls='never'; }
     else if(pr.online){ seenTxt='online'; seenCls='live'; }
     else { seenTxt=pr.at?'seen '+since(pr.at):'offline'; seenCls=''; }
     row.innerHTML='<div class="beam-meta"><div class="beam-name">'+
       '<span class="pres'+(pr.online&&m.id!==me?' on':'')+'"></span>'+esc(m.name)+
       (m.id===me?'<span class="you">YOU</span>':'')+
-      '<span class="seen '+seenCls+'">'+esc(seenTxt)+'</span></div>'+
+      (seenTxt?'<span class="seen '+seenCls+'">'+esc(seenTxt)+'</span>':'')+'</div>'+
       '<div class="beam-val '+dir+'">'+(v===0?'settled':(v>0?'+':'−')+money(Math.abs(v)))+'</div></div>'+
       '<div class="beam-track">'+(v===0?'':'<div class="beam-fill '+dir+'" style="'+
       (v>0?'width:'+pct+'%':'width:'+pct+'%;left:'+(50-pct)+'%')+'"></div>')+'</div>';
@@ -1165,6 +1188,25 @@ function render(){
   });
 }
 
+function drawSetup(){
+  var box=document.getElementById('setupNames'); box.innerHTML='';
+  activeMembers().forEach(function(m){
+    var b=document.createElement('button'); b.className='setup-btn'; b.type='button';
+    b.textContent=m.name;
+    b.onclick=function(){
+      ask({title:'You are '+m.name+'?',
+           message:'This phone stays as '+m.name+'. You can change it later through developer mode.',
+           okLabel:'Yes, that\u2019s me', cancelLabel:'Back'},
+          function(v,ok){
+            if(!ok)return;
+            me=m.id; lockMe();
+            try{localStorage.setItem(LS_ME,me);}catch(x){}
+            claimPresence(); render();
+          });
+    };
+    box.appendChild(b);
+  });
+}
 function stamp(ts){
   if(!ts)return '';
   var d=new Date(ts);
@@ -2256,22 +2298,11 @@ function wire(){
     }
   };
 
+  // Only reachable in developer mode now — the first choice is made on the setup card.
   document.getElementById('whoami').onchange=function(e){
-    var picked=e.target.value, prev=me;
-    if(devMode||meLocked){        // already settled, or you're the developer
-      me=picked; try{localStorage.setItem(LS_ME,me);}catch(x){} claimPresence(); render(); return;
-    }
-    // First choice on this phone fixes it, so make sure they meant it.
-    ask({title:'You are '+memberById(picked).name+'?',
-         message:'This phone stays as '+memberById(picked).name+
-                 '. Everything you add is recorded under that name, and only you can confirm payments sent to you.',
-         okLabel:'Yes, that\u2019s me', cancelLabel:'Back'},
-        function(v,ok){
-          if(!ok){ me=prev; render(); return; }
-          me=picked; lockMe();
-          try{localStorage.setItem(LS_ME,me);}catch(x){}
-          claimPresence(); render();
-        });
+    me=e.target.value; lockMe();
+    try{localStorage.setItem(LS_ME,me);}catch(x){}
+    claimPresence(); render();
   };
 
   document.getElementById('modeEqual').onclick=function(){form.mode='equal';drawExpenseChips();drawSplitDetail();};
