@@ -123,7 +123,7 @@ exports.onEntryWritten = onValueWritten(
               title: msg.title,
               body: msg.body,
               icon: '/flat-ledger/icon-192.png',
-              badge: '/flat-ledger/icon-192.png',
+              badge: '/flat-ledger/badge-96.png',   // Android silhouettes this — must be white on transparent
               tag: msg.tag || 'flat-ledger'
             },
             fcmOptions: { link: '/flat-ledger/' }
