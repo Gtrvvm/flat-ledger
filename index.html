@@ -642,7 +642,7 @@ function capDate(id){
 /* ---------- default state ---------- */
 function blank(){
   var m=[{id:'m1',name:'Jacky',active:true},{id:'m2',name:'Phoebe',active:true},
-         {id:'m3',name:'Flatmate 3',active:true},{id:'m4',name:'Flatmate 4',active:true}];
+         {id:'m3',name:'Justin',active:true},{id:'m4',name:'Athene',active:true}];
   var all={};m.forEach(function(x){all[x.id]=true;});
   return {
     flatName:'Coppermaker Square · Apt 109',
@@ -1724,12 +1724,8 @@ function readReceipt(){
     if(done)return; done=true; clearTimeout(timer);
     btn.disabled=false; btn.textContent='Read it again';
     if(!res.ok||res.body.error){
-      var msg=res.body.error||('Reader returned '+res.status);
-      if(res.body.status) msg+=' ['+res.body.status+']';
-      out.innerHTML='<div class="read-line"><span class="k">'+esc(msg)+'</span></div>';
-      if(res.body.detail){
-        out.innerHTML+='<div class="read-line"><span class="k">'+esc(res.body.detail)+'</span></div>';
-      }
+      out.innerHTML='<div class="read-line"><span class="k">'+
+        esc(res.body.error||('Reader returned '+res.status))+'</span></div>';
       return;
     }
     showReadResult(res.body);
