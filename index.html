@@ -1859,7 +1859,7 @@ async function enableNotify(){
     msgMod.onMessage(messaging,function(payload){
       var d=payload.data||{};
       if(reg&&reg.showNotification)
-        reg.showNotification(d.title||'Flat Ledger',{body:d.body||'',icon:'icon-192.png',tag:d.tag||'flat-ledger'});
+        reg.showNotification(d.title||'Flat Ledger',{body:d.body||'',icon:'icon-192.png',badge:'badge-96.png',tag:d.tag||'flat-ledger'});
     });
     drawNotify();
   }catch(err){
