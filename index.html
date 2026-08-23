@@ -100,12 +100,24 @@ h1.title{font-size:30px;font-weight:800;letter-spacing:-.03em;margin:4px 0 0;lin
 
 .fab{position:fixed;left:50%;bottom:calc(16px + var(--safe-b));transform:translateX(-50%);z-index:40;width:calc(100% - 32px);max-width:560px;display:flex;gap:8px}
 .fab button{flex:1;font-family:var(--display);font-size:15px;font-weight:700;padding:14px;border-radius:12px;border:0;cursor:pointer;background:var(--ink);color:#fff;box-shadow:0 6px 20px rgba(20,26,31,.22)}
-.fab button.ghost{flex:0 0 auto;background:var(--card);color:var(--ink);border:1px solid var(--line);font-size:13px;padding:14px 15px}
+.fab button.ghost{flex:0 0 auto;background:var(--card);color:var(--ink);border:1px solid var(--line);font-size:13px;padding:14px 14px}
+.fab button.icon{flex:0 0 auto;background:var(--card);color:var(--ink);border:1px solid var(--line);
+  padding:0;width:52px;display:flex;align-items:center;justify-content:center}
+.fab button.icon svg{width:21px;height:21px;stroke:var(--ink);fill:none;stroke-width:1.7;
+  stroke-linecap:round;stroke-linejoin:round}
+@media (max-width:360px){
+  .fab button{font-size:14px;padding:13px}
+  .fab button.ghost{font-size:12px;padding:13px 11px}
+  .fab button.icon{width:46px}
+}
 
 .scrim{position:fixed;inset:0;background:rgba(20,26,31,.42);z-index:50;display:none}
 .scrim.open{display:block}
 .sheet{position:fixed;left:50%;bottom:0;transform:translateX(-50%);width:100%;max-width:560px;max-height:92vh;overflow-y:auto;background:var(--card);border-radius:18px 18px 0 0;z-index:51;padding:18px 16px calc(26px + var(--safe-b));display:none;animation:up .22s cubic-bezier(.2,.7,.3,1)}
 .sheet.open{display:block}
+#sheetTpl,#sheetPreset{z-index:53}   /* opened from Settings, so they must stack above it */
+#sheetAsk{z-index:60}                /* always on top of whatever asked */
+#sheetAct{z-index:52}
 @keyframes up{from{transform:translate(-50%,22px);opacity:.4}to{transform:translate(-50%,0);opacity:1}}
 .sheet-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
 .sheet-head h3{margin:0;font-size:19px;font-weight:800;letter-spacing:-.02em}
@@ -163,6 +175,24 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 .act-btn .sub{display:block;font-size:12px;font-weight:400;color:var(--muted);margin-top:3px}
 .act-btn.danger{color:var(--red);border-color:var(--red-wash);background:var(--red-wash)}
 .act-btn.danger .sub{color:var(--red)}
+.alert{background:var(--blue-wash);border:1px solid #C9D6F7;border-radius:14px;padding:15px 16px;margin-bottom:14px}
+.alert.wait{background:var(--amber-wash);border-color:#EEDDB6}
+.alert-title{font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--blue);margin-bottom:8px}
+.alert.wait .alert-title{color:var(--amber)}
+.alert-line{font-size:15px;font-weight:600;letter-spacing:-.01em;line-height:1.4}
+.alert-line .amt{font-family:var(--mono);font-weight:700;font-variant-numeric:tabular-nums}
+.alert-sub{font-size:12px;color:var(--ink-soft);margin-top:4px;line-height:1.45}
+.alert-acts{display:flex;gap:8px;margin-top:12px}
+.alert-acts button{flex:1;font-family:var(--display);font-size:14px;font-weight:700;padding:11px;border-radius:9px;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+.alert-acts button.yes{background:var(--blue);border-color:var(--blue);color:#fff}
+.alert-item{padding:11px 0;border-bottom:1px dashed rgba(20,26,31,.12)}
+.alert-item:first-of-type{padding-top:0}
+.alert-item:last-child{border-bottom:0;padding-bottom:0}
+.entry.pending{opacity:.62}
+.entry.pending .entry-amt{color:var(--amber)}
+.dirchips{display:flex;gap:8px}
+.dirchips button{flex:1;font-family:var(--display);font-size:14px;font-weight:600;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink-soft);cursor:pointer}
+.dirchips button.on{background:var(--ink);border-color:var(--ink);color:#fff}
 .entry.void{opacity:.5}
 .entry.void .entry-desc{text-decoration:line-through}
 .entry.void .entry-amt{text-decoration:line-through}
@@ -207,6 +237,8 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
   </div>
 
   <div id="app">
+    <div id="alerts"></div>
+
     <div class="card position">
       <div class="pos-label" id="posLabel">Your position</div>
       <div class="pos-amount flat" id="posAmount">£0.00</div>
@@ -220,7 +252,6 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
     <div class="card">
       <div class="sec">
         <h2>Where everyone stands</h2>
-        <button class="btn small" id="openSettings">Settings</button>
       </div>
       <div id="beam"></div>
       <div class="beam-scale"><span>Owes the flat</span><span>Owed by the flat</span></div>
@@ -249,7 +280,6 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
         <input id="search" type="search" placeholder="Search expenses, notes, people…" autocomplete="off">
         <button class="searchclear" id="searchClear" aria-label="Clear search">✕</button>
       </div>
-      <div class="searchcount" id="searchCount" style="display:none"></div>
       <div id="entries"></div>
     </div>
 
@@ -260,6 +290,12 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 <div class="fab" id="fab">
   <button id="addBtn">Add expense</button>
   <button class="ghost" id="payBtn">Payment</button>
+  <button class="icon" id="settingsBtn" aria-label="Settings" title="Settings">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="3.2"></circle>
+      <path d="M19.4 15a1.7 1.7 0 0 0 .33 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.33 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 8.9 19.3a1.7 1.7 0 0 0-1.87.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.53 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.7 8.9a1.7 1.7 0 0 0-.33-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.53a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.47 9V9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path>
+    </svg>
+  </button>
 </div>
 
 <div class="scrim" id="scrim"></div>
@@ -308,12 +344,18 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 <!-- PAYMENT -->
 <div class="sheet" id="sheetPay" role="dialog" aria-label="Record payment">
   <div class="sheet-head"><h3>Record payment</h3><button class="btn small" data-close>Close</button></div>
-  <p class="hint" style="margin:0 0 14px">Use this when money actually moves between two of you.</p>
+  <p class="hint" style="margin:0 0 14px" id="payHint">Use this when money actually moves between two of you.</p>
   <div class="field"><span class="label">Amount</span>
     <div class="amount-wrap"><span>£</span><input id="payAmount" type="text" inputmode="decimal" placeholder="0.00" autocomplete="off"></div>
   </div>
-  <div class="field"><label class="label" for="payFrom">From</label><select class="select" id="payFrom"></select></div>
-  <div class="field"><label class="label" for="payTo">To</label><select class="select" id="payTo"></select></div>
+  <div class="field"><span class="label">Direction</span>
+    <div class="dirchips">
+      <button type="button" id="dirSent">I sent money</button>
+      <button type="button" id="dirGot">I received money</button>
+    </div>
+  </div>
+  <div class="field"><label class="label" id="payOtherLabel" for="payOther">To</label>
+    <select class="select" id="payOther"></select></div>
   <div class="field"><label class="label" for="payDate">Date</label><input class="input" id="payDate" type="date"></div>
   <div class="err" id="payErr"></div>
   <button class="btn primary" id="savePay" style="width:100%;padding:13px;font-size:15px">Record payment</button>
@@ -321,7 +363,7 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 
 <!-- TEMPLATE EDIT -->
 <div class="sheet" id="sheetTpl" role="dialog" aria-label="Recurring bill">
-  <div class="sheet-head"><h3 id="tplTitle">Recurring bill</h3><button class="btn small" data-close>Close</button></div>
+  <div class="sheet-head"><h3 id="tplTitle">Recurring bill</h3><button class="btn small" id="tplClose">Close</button></div>
   <div class="field"><label class="label" for="tplName">Name</label><input class="input" id="tplName" type="text" placeholder="e.g. Electricity" autocomplete="off"></div>
   <div class="field"><span class="label">Category</span><div class="chips" id="tplCats"></div></div>
   <div class="field"><span class="label">Amount</span>
@@ -339,6 +381,43 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
   <div style="display:flex;gap:8px">
     <button class="btn" id="tplDelete" style="flex:0 0 auto;padding:13px 14px">Delete</button>
     <button class="btn primary" id="tplSave" style="flex:1;padding:13px;font-size:15px">Save bill</button>
+  </div>
+</div>
+
+<!-- ASK (replaces native confirm/prompt, which sandboxed frames block) -->
+<div class="sheet" id="sheetAsk" role="alertdialog" aria-labelledby="askTitle">
+  <div class="sheet-head"><h3 id="askTitle">Are you sure?</h3></div>
+  <p class="hint" id="askMsg" style="margin:0 0 14px;font-size:14px;color:var(--ink-soft)"></p>
+  <div class="field" id="askInputWrap" style="display:none">
+    <label class="label" id="askInputLabel" for="askInput">Reason — optional</label>
+    <input class="input" id="askInput" type="text" autocomplete="off">
+  </div>
+  <div style="display:flex;gap:8px">
+    <button class="btn" id="askNo" style="flex:1;padding:13px;font-size:15px">Back</button>
+    <button class="btn primary" id="askYes" style="flex:1;padding:13px;font-size:15px">Confirm</button>
+  </div>
+</div>
+
+<!-- SAVED SPLIT EDITOR -->
+<div class="sheet" id="sheetPreset" role="dialog" aria-label="Saved split">
+  <div class="sheet-head"><h3 id="psTitle">Saved split</h3><button class="btn small" id="psClose">Close</button></div>
+  <div class="field"><label class="label" for="psName">Name</label>
+    <input class="input" id="psName" type="text" placeholder="e.g. Food shop" autocomplete="off"></div>
+  <div class="field"><span class="label">Type</span>
+    <div class="chips">
+      <button class="chip" id="psModePercent" type="button">Percentages</button>
+      <button class="chip" id="psModeShares" type="button">Shares</button>
+    </div>
+  </div>
+  <div class="field"><span class="label">Who's in it, and how much</span>
+    <div id="psRows"></div>
+    <div class="remainder" id="psNote"></div>
+    <p class="hint">Untick anyone not usually included. Shares mean 2 vs 1 is twice as much — handy when someone drops out, because the rest rebalance on their own.</p>
+  </div>
+  <div class="err" id="psErr"></div>
+  <div style="display:flex;gap:8px">
+    <button class="btn" id="psDelete" style="flex:0 0 auto;padding:13px 14px">Delete</button>
+    <button class="btn primary" id="psSave" style="flex:1;padding:13px;font-size:15px">Save split</button>
   </div>
 </div>
 
@@ -389,7 +468,8 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 
   <div class="field"><span class="label">Saved splits</span>
     <div id="presetRows"></div>
-    <p class="hint">For things that aren't split evenly — a bigger share of the food shop, for instance.</p>
+    <button class="btn small" id="addPreset" style="margin-top:8px">New saved split</button>
+    <p class="hint">For things that aren't split evenly — a bigger share of the food shop, for instance. Tap one in the expense screen to apply it.</p>
   </div>
 
   <div class="divider"></div>
@@ -502,7 +582,60 @@ function purgeEntry(id){
   delete state.entries[id]; saveLocal(); render();
   if(fbRefs){fbRefs.remove(fbRefs.child(fbRefs.entries,id)).catch(function(){});}
 }
-function liveEntries(){ return entryList().filter(function(e){return !e.voided;}); }
+// A payment only moves money once the person who received it says it arrived.
+function countsInBalance(e){
+  if(e.voided)return false;
+  if(e.type==='payment'&&e.status&&e.status!=='confirmed')return false;
+  return true;
+}
+function liveEntries(){ return entryList().filter(countsInBalance); }
+function pendingFor(id){   // payments waiting on this person to confirm
+  return entryList().filter(function(e){
+    return e.type==='payment'&&e.status==='pending'&&!e.voided&&e.shares&&e.shares[id];
+  });
+}
+function pendingBy(id){    // payments this person logged, still waiting
+  return entryList().filter(function(e){
+    return e.type==='payment'&&e.status==='pending'&&!e.voided&&e.paidBy===id;
+  });
+}
+function myPendingTo(otherId){
+  var hit=entryList().filter(function(e){
+    return e.type==='payment'&&e.status==='pending'&&!e.voided&&
+           e.paidBy===me&&e.shares&&e.shares[otherId];
+  });
+  return hit.length?hit[0]:null;
+}
+// A pending payment never touched the balances and nobody confirmed it,
+// so the person who logged it can take it back outright rather than leaving a void.
+function cancelPayment(id){
+  var e=state.entries[id]; if(!e)return;
+  if(e.status!=='pending'||e.addedBy!==me){ voidEntry(id,'cancelled'); return; }
+  purgeEntry(id);
+}
+// A payment is between two named people; nobody else gets to alter it.
+function isPartyTo(e){
+  if(e.type!=='payment')return true;              // expenses belong to the whole flat
+  return e.paidBy===me || !!(e.shares&&e.shares[me]);
+}
+function confirmPayment(id){
+  var e=state.entries[id]; if(!e)return;
+  e.status='confirmed'; e.confirmedBy=me; e.confirmedAt=Date.now();
+  pushEntry(e);
+}
+// Putting a confirmation back to pending, rather than deleting the payment,
+// so the trail reads "un-confirmed" instead of "deleted".
+function unconfirmPayment(id){
+  var e=state.entries[id]; if(!e)return;
+  e.status='pending'; e.unconfirmedBy=me; e.unconfirmedAt=Date.now();
+  delete e.confirmedBy; delete e.confirmedAt;
+  pushEntry(e);
+}
+function declinePayment(id,why){
+  var e=state.entries[id]; if(!e)return;
+  e.status='declined'; e.declinedBy=me; e.declinedAt=Date.now(); e.declineReason=why||'';
+  pushEntry(e);
+}
 
 /* ---------- firebase ---------- */
 async function connect(){
@@ -582,6 +715,8 @@ function render(){
   if(!me||memberById(me).active===false)me=(activeMembers()[0]||{}).id;
   who.value=me;
 
+  renderAlerts();
+
   var b=balances(), mine=b[me]||0;
   var pa=document.getElementById('posAmount'),pl=document.getElementById('posLabel');
   pa.className='pos-amount '+(mine>0?'up':mine<0?'down':'flat');
@@ -629,9 +764,28 @@ function render(){
     row.innerHTML='<div class="settle-text"><strong>'+esc(memberById(t.from).name)+'</strong>'+
       '<span class="arrow"> → </span><strong>'+esc(memberById(t.to).name)+'</strong> '+
       '<span class="amt">'+money(t.amount)+'</span></div>';
-    var btn=document.createElement('button'); btn.className='btn small'; btn.textContent='Mark paid';
-    btn.onclick=function(){openPay(t.from,t.to,t.amount);};
-    row.appendChild(btn); se.appendChild(row);
+    if(t.from===me||t.to===me){
+      var pend=(t.from===me)?myPendingTo(t.to):null;
+      var btn=document.createElement('button'); btn.className='btn small';
+      if(pend){
+        btn.textContent='Cancel';
+        row.querySelector('.settle-text').innerHTML+=
+          '<div class="entry-sub">'+money(pend.amount)+' waiting for '+
+          esc(memberById(t.to).name)+' to confirm</div>';
+        btn.onclick=function(){
+          ask({title:'Cancel this payment?',
+               message:'The '+money(pend.amount)+' you logged to '+memberById(t.to).name+
+                       ' never counted towards anything, so this removes it completely.',
+               okLabel:'Cancel payment', cancelLabel:'Keep it', danger:true},
+              function(v,ok){ if(ok)cancelPayment(pend.id); });
+        };
+      } else {
+        btn.textContent=t.from===me?'I paid this':'Mark received';
+        btn.onclick=function(){openPay(t.from===me?'sent':'got', t.from===me?t.to:t.from, t.amount);};
+      }
+      row.appendChild(btn);
+    }
+    se.appendChild(row);
   });
 
   // month
@@ -690,8 +844,85 @@ function stamp(ts){
   return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})+' '+
          d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
 }
+function renderAlerts(){
+  var box=document.getElementById('alerts'); box.innerHTML='';
+
+  var toConfirm=pendingFor(me);
+  if(toConfirm.length){
+    var card=document.createElement('div'); card.className='alert';
+    var t=document.createElement('div'); t.className='alert-title';
+    t.textContent=toConfirm.length===1?'Did this arrive?':toConfirm.length+' payments to confirm';
+    card.appendChild(t);
+    toConfirm.forEach(function(e){
+      var item=document.createElement('div'); item.className='alert-item';
+      item.innerHTML='<div class="alert-line">'+esc(memberById(e.paidBy).name)+
+        ' says they sent you <span class="amt">'+money(e.amount)+'</span></div>'+
+        '<div class="alert-sub">Logged '+stamp(e.createdAt)+'. It won\u2019t count until you confirm it landed.</div>';
+      var acts=document.createElement('div'); acts.className='alert-acts';
+      var yes=document.createElement('button'); yes.className='yes'; yes.textContent='Confirm';
+      yes.onclick=function(){confirmPayment(e.id);};
+      var no=document.createElement('button'); no.textContent='Not received';
+      no.onclick=function(){
+        ask({title:'Not received?',
+             message:memberById(e.paidBy).name+' will see this, and the payment stays out of the balances.',
+             input:true, inputLabel:'What happened — optional',
+             placeholder:'e.g. nothing showed up in my account',
+             okLabel:'Mark not received', danger:true},
+            function(why,ok){ if(ok)declinePayment(e.id,why); });
+      };
+      acts.appendChild(yes); acts.appendChild(no); item.appendChild(acts);
+      card.appendChild(item);
+    });
+    box.appendChild(card);
+  }
+
+  var waiting=pendingBy(me);
+  if(waiting.length){
+    var w=document.createElement('div'); w.className='alert wait';
+    var wt=document.createElement('div'); wt.className='alert-title'; wt.textContent='Waiting on confirmation';
+    w.appendChild(wt);
+    waiting.forEach(function(e){
+      var who=Object.keys(e.shares||{}).map(function(id){return memberById(id).name;}).join(', ');
+      var item=document.createElement('div'); item.className='alert-item';
+      item.innerHTML='<div class="alert-line"><span class="amt">'+money(e.amount)+'</span> to '+esc(who)+'</div>'+
+        '<div class="alert-sub">Not in the balances until '+esc(who)+' confirms it arrived.</div>';
+      var wacts=document.createElement('div'); wacts.className='alert-acts';
+      var cancel=document.createElement('button'); cancel.textContent='Cancel this';
+      cancel.onclick=function(){
+        ask({title:'Cancel this payment?',
+             message:'The '+money(e.amount)+' to '+who+' never counted, so this removes it completely.',
+             okLabel:'Cancel payment', cancelLabel:'Keep it', danger:true},
+            function(v,ok){ if(ok)cancelPayment(e.id); });
+      };
+      wacts.appendChild(cancel); item.appendChild(wacts);
+      w.appendChild(item);
+    });
+    box.appendChild(w);
+  }
+
+  var declined=entryList().filter(function(e){
+    return e.type==='payment'&&e.status==='declined'&&!e.voided&&e.paidBy===me;
+  });
+  if(declined.length){
+    var d=document.createElement('div'); d.className='alert wait';
+    var dt=document.createElement('div'); dt.className='alert-title'; dt.textContent='Not received';
+    d.appendChild(dt);
+    declined.forEach(function(e){
+      var item=document.createElement('div'); item.className='alert-item';
+      item.innerHTML='<div class="alert-line"><span class="amt">'+money(e.amount)+'</span> marked not received by '+
+        esc(memberById(e.declinedBy).name)+'</div>'+
+        '<div class="alert-sub">'+esc(e.declineReason||'No reason given')+' \u00B7 tap the entry below to delete or re-log it.</div>';
+      d.appendChild(item);
+    });
+    box.appendChild(d);
+  }
+}
+
 function entryRow(e){
-  var row=document.createElement('div'); row.className='entry'+(e.voided?' void':'');
+  var isPending=e.type==='payment'&&e.status==='pending'&&!e.voided;
+  var isDeclined=e.type==='payment'&&e.status==='declined'&&!e.voided;
+  var row=document.createElement('div');
+  row.className='entry'+(e.voided?' void':'')+((isPending||isDeclined)?' pending':'');
   var isPay=e.type==='payment', payer=memberById(e.paidBy).name, sub;
   if(isPay){ sub=payer+' paid '+Object.keys(e.shares||{}).map(function(id){return memberById(id).name;}).join(', '); }
   else {
@@ -707,6 +938,15 @@ function entryRow(e){
     (e.note?'<div class="entry-note">'+esc(e.note)+'</div>':'')+
     (e.addedBy?'<div class="trail">Added by '+esc(memberById(e.addedBy).name)+
       (e.editedBy?' · edited by '+esc(memberById(e.editedBy).name)+' '+stamp(e.editedAt):'')+'</div>':'')+
+    (isPending?'<div class="trail del">Waiting for '+
+      esc(Object.keys(e.shares||{}).map(function(id){return memberById(id).name;}).join(', '))+
+      ' to confirm — not counted yet</div>':'')+
+    (isDeclined?'<div class="trail del">Marked not received by '+esc(memberById(e.declinedBy).name)+' '+
+      stamp(e.declinedAt)+(e.declineReason?' — '+esc(e.declineReason):'')+'</div>':'')+
+    (e.unconfirmedBy&&e.status==='pending'?'<div class="trail">Un-confirmed by '+
+      esc(memberById(e.unconfirmedBy).name)+' '+stamp(e.unconfirmedAt)+'</div>':'')+
+    (e.status==='confirmed'&&e.confirmedBy?'<div class="trail">Confirmed by '+
+      esc(memberById(e.confirmedBy).name)+' '+stamp(e.confirmedAt)+'</div>':'')+
     (e.voided?'<div class="trail del">Deleted by '+esc(memberById(e.voidedBy).name)+' '+stamp(e.voidedAt)+
       (e.voidReason?' — '+esc(e.voidReason):'')+'</div>':'')+'</div>'+
     '<div class="entry-right"><div class="entry-amt">'+money(e.amount)+'</div>'+
@@ -739,17 +979,51 @@ function openActions(e){
   }
   if(e.voided){
     btn('Restore','Puts it back into the balances','',function(){closeSheets();restoreEntry(e.id);});
+  } else if(e.type==='payment'&&e.status==='pending'&&e.addedBy===me){
+    btn('Cancel payment','Removes it — it never counted','danger',function(){
+      ask({title:'Cancel this payment?', message:money(e.amount)+' — it never counted, so this removes it completely.',
+           okLabel:'Cancel payment', cancelLabel:'Keep it', danger:true},
+          function(v,ok){ if(ok)cancelPayment(e.id); });
+    });
+  } else if(e.type==='payment'&&e.status==='pending'&&e.shares&&e.shares[me]){
+    btn('Confirm it arrived','Adds it to the balances','',function(){closeSheets();confirmPayment(e.id);});
+    btn('Not received','Tells '+memberById(e.paidBy).name+' it never landed','danger',function(){
+      ask({title:'Not received?',
+           message:memberById(e.paidBy).name+' will see this, and the payment stays out of the balances.',
+           input:true, inputLabel:'What happened — optional', okLabel:'Mark not received', danger:true},
+          function(why,ok){ if(ok)declinePayment(e.id,why); });
+    });
   } else {
     if(!isPay){
       btn('Edit','Change the amount, split or note','',function(){closeSheets();editEntry(e);});
       btn('Repeat','Log it again today with the same split','',function(){closeSheets();repeatEntry(e);});
     }
-    btn('Delete','Everyone sees who deleted it','danger',function(){
-      var why=prompt('Delete "'+(e.desc||'this entry')+'" for '+money(e.amount)+
-        '?\n\nEveryone will see that you deleted it. Add a reason (optional):');
-      if(why===null)return;
-      closeSheets(); voidEntry(e.id,why.trim());
-    });
+    // Confirmed too quickly? Put it back to pending instead of deleting it.
+    if(isPay&&e.status==='confirmed'&&e.shares&&e.shares[me]){
+      btn('Un-confirm','Back to pending — takes it out of the balances','',function(){
+        ask({title:'Un-confirm this payment?',
+             message:money(e.amount)+' from '+memberById(e.paidBy).name+
+                     ' goes back to pending and leaves the balances. They can ask you to confirm it again.',
+             okLabel:'Un-confirm', cancelLabel:'Leave it'},
+            function(v,ok){ if(ok)unconfirmPayment(e.id); });
+      });
+    }
+    if(isPartyTo(e)){
+      btn('Delete','Everyone sees who deleted it','danger',function(){
+        ask({title:'Delete this entry?',
+             message:(e.desc||'This entry')+' — '+money(e.amount)+
+                     '. It stays in the ledger showing you deleted it, and drops out of all balances.',
+             input:true, inputLabel:'Reason — optional', placeholder:'e.g. logged twice by mistake',
+             okLabel:'Delete', danger:true},
+            function(why,ok){ if(ok)voidEntry(e.id,why); });
+      });
+    } else {
+      var note=document.createElement('p'); note.className='hint'; note.style.margin='4px 0 0';
+      note.textContent='Only '+memberById(e.paidBy).name+' and '+
+        Object.keys(e.shares||{}).map(function(id){return memberById(id).name;}).join(', ')+
+        ' can change this payment.';
+      box.appendChild(note);
+    }
   }
   openSheet('sheetAct');
 }
@@ -763,9 +1037,37 @@ function prettyDate(d){
 }
 
 /* ---------- sheets ---------- */
+var askCb=null;
+// Native confirm()/prompt() are silently ignored inside sandboxed frames,
+// so every yes/no and every reason box goes through this instead.
+function ask(o,cb){
+  askCb=cb||null;
+  document.getElementById('askTitle').textContent=o.title||'Are you sure?';
+  document.getElementById('askMsg').textContent=o.message||'';
+  var wrap=document.getElementById('askInputWrap'), inp=document.getElementById('askInput');
+  wrap.style.display=o.input?'block':'none';
+  if(o.input){
+    document.getElementById('askInputLabel').textContent=o.inputLabel||'Reason — optional';
+    inp.value=o.value||''; inp.placeholder=o.placeholder||'';
+  }
+  var yes=document.getElementById('askYes');
+  yes.textContent=o.okLabel||'Confirm';
+  yes.style.background=o.danger?'var(--red)':'var(--ink)';
+  yes.style.borderColor=o.danger?'var(--red)':'var(--ink)';
+  document.getElementById('askNo').textContent=o.cancelLabel||'Back';
+  closeSheets(); openSheet('sheetAsk');
+  if(o.input)setTimeout(function(){inp.focus();},90);
+}
+function askDone(ok){
+  var inp=document.getElementById('askInput');
+  var wants=document.getElementById('askInputWrap').style.display!=='none';
+  var val=ok?(wants?inp.value.trim():true):null;
+  var cb=askCb; askCb=null; closeSheets();
+  if(cb)cb(ok?val:null, ok);
+}
 function openSheet(id){document.getElementById('scrim').classList.add('open');document.getElementById(id).classList.add('open');}
 function closeSheets(){document.getElementById('scrim').classList.remove('open');
-  ['sheetExpense','sheetPay','sheetSettings','sheetTpl','sheetCsv','sheetAct'].forEach(function(i){document.getElementById(i).classList.remove('open');});}
+  ['sheetExpense','sheetPay','sheetSettings','sheetTpl','sheetCsv','sheetAct','sheetPreset','sheetAsk'].forEach(function(i){document.getElementById(i).classList.remove('open');});}
 
 function openExpense(){
   form={cat:'Groceries',paidBy:me,split:{},mode:'equal',custom:{},weights:{},tplId:null,period:null,editingId:null};
@@ -841,6 +1143,9 @@ function drawExpenseChips(){
   document.getElementById('modeCustom').className='chip'+(form.mode==='custom'?' on':'');
   document.getElementById('modeShares').className='chip pct'+(form.mode==='shares'?' on':'');
   document.getElementById('modePercent').className='chip pct'+(form.mode==='percent'?' on':'');
+}
+function openExpenseAgain(){   // ask() closes every sheet, so bring the expense form back
+  drawExpenseChips(); drawSplitDetail(); openSheet('sheetExpense');
 }
 function drawSplitDetail(){
   document.getElementById('customBox').style.display=form.mode==='custom'?'block':'none';
@@ -928,6 +1233,67 @@ function drawPresetChips(){
     box.appendChild(b);
   });
 }
+var psForm=null;
+function openPreset(ps){
+  psForm = ps ? {id:ps.id,name:ps.name,mode:ps.mode||'percent',weights:{},inc:{},isNew:false}
+              : {id:uid('ps'),name:'',mode:'percent',weights:{},inc:{},isNew:true};
+  activeMembers().forEach(function(m){
+    var has = ps && ps.weights && ps.weights[m.id]!==undefined;
+    psForm.inc[m.id]= ps ? !!has : true;
+    psForm.weights[m.id]= has ? String(ps.weights[m.id]) : '';
+  });
+  document.getElementById('psTitle').textContent=ps?'Edit saved split':'New saved split';
+  document.getElementById('psName').value=psForm.name;
+  document.getElementById('psErr').textContent='';
+  document.getElementById('psDelete').style.display=ps?'block':'none';
+  closeSheets();
+  drawPresetForm(); openSheet('sheetPreset');
+  setTimeout(function(){ if(!ps)document.getElementById('psName').focus(); },90);
+}
+function drawPresetForm(){
+  var isPct=psForm.mode==='percent';
+  document.getElementById('psModePercent').className='chip pct'+(isPct?' on':'');
+  document.getElementById('psModeShares').className='chip pct'+(!isPct?' on':'');
+  var ids=activeMembers().filter(function(m){return psForm.inc[m.id];}).map(function(m){return m.id;});
+  // seed blanks so the form is never empty
+  ids.forEach(function(i){ if(!psForm.weights[i])psForm.weights[i]=isPct?String(+(100/ids.length).toFixed(2)):'1'; });
+  var box=document.getElementById('psRows'); box.innerHTML='';
+  activeMembers().forEach(function(m){
+    var row=document.createElement('div'); row.className='pct-row';
+    var tick=document.createElement('button'); tick.type='button';
+    tick.className='chip split'+(psForm.inc[m.id]?' on':'');
+    tick.textContent=m.name; tick.style.flex='1'; tick.style.textAlign='left';
+    tick.onclick=function(){ psForm.inc[m.id]=!psForm.inc[m.id]; if(!psForm.inc[m.id])psForm.weights[m.id]=''; drawPresetForm(); };
+    row.appendChild(tick);
+    if(psForm.inc[m.id]){
+      var inp=document.createElement('input'); inp.className='pctin'; inp.type='text'; inp.inputMode='decimal';
+      inp.value=psForm.weights[m.id]||''; inp.setAttribute('aria-label',m.name+(isPct?' percent':' shares'));
+      inp.oninput=function(){psForm.weights[m.id]=inp.value;checkPresetForm();};
+      var suf=document.createElement('span'); suf.className='pctsuf'; suf.textContent=isPct?'%':'\u00D7';
+      row.appendChild(inp); row.appendChild(suf);
+    }
+    box.appendChild(row);
+  });
+  checkPresetForm();
+}
+function checkPresetForm(){
+  var el=document.getElementById('psNote'), isPct=psForm.mode==='percent';
+  var ids=activeMembers().filter(function(m){return psForm.inc[m.id];});
+  var sum=0; ids.forEach(function(m){sum+=(parseFloat(psForm.weights[m.id])||0);});
+  if(!ids.length){ el.className='remainder bad'; el.textContent='Pick at least one person.'; return; }
+  if(isPct){
+    var off=Math.round((sum-100)*100)/100;
+    el.className='remainder'+(off===0?'':' bad');
+    el.textContent=off===0?'Adds up to 100%.':(off>0?off+'% over':Math.abs(off)+'% left to assign');
+  } else {
+    el.className='remainder';
+    var parts=ids.map(function(m){
+      var w=parseFloat(psForm.weights[m.id])||0;
+      return m.name+' '+(sum>0?Math.round(w/sum*1000)/10:0)+'%';
+    });
+    el.textContent=sum>0?'Works out as '+parts.join(', '):'Give at least one person a share.';
+  }
+}
 function drawSettingsPresets(){
   var box=document.getElementById('presetRows'); box.innerHTML='';
   if(!state.presets.length){ box.innerHTML='<div class="empty">No saved splits yet.</div>'; return; }
@@ -937,29 +1303,32 @@ function drawSettingsPresets(){
       .map(function(id){return memberById(id).name+' '+ps.weights[id]+(ps.mode==='percent'?'%':'×');});
     row.innerHTML='<div class="preset-body"><div class="preset-name">'+esc(ps.name)+'</div>'+
       '<div class="preset-sub">'+esc(parts.join(' · '))+'</div></div>';
-    var del=document.createElement('button'); del.className='btn small'; del.textContent='Delete';
-    del.onclick=function(){
-      if(!confirm('Delete the "'+ps.name+'" split?'))return;
-      state.presets=state.presets.filter(function(x){return x.id!==ps.id;});
-      pushMeta(); openSettings();
-    };
-    row.appendChild(del); box.appendChild(row);
+    var ed=document.createElement('button'); ed.className='btn small'; ed.textContent='Edit';
+    ed.onclick=function(){openPreset(ps);};
+    row.appendChild(ed); box.appendChild(row);
   });
 }
 
-function openPay(from,to,amount){
-  var f=document.getElementById('payFrom'),t=document.getElementById('payTo');
-  f.innerHTML='';t.innerHTML='';
-  activeMembers().forEach(function(m){
-    var a=document.createElement('option');a.value=m.id;a.textContent=m.name;f.appendChild(a);
-    var b=document.createElement('option');b.value=m.id;b.textContent=m.name;t.appendChild(b);});
-  f.value=from||me;
-  var others=activeMembers().filter(function(m){return m.id!==f.value;});
-  t.value=to||(others[0]||{}).id;
+var payDir='sent';
+function openPay(dir,otherId,amount){
+  payDir=(dir==='got')?'got':'sent';
+  var sel=document.getElementById('payOther'); sel.innerHTML='';
+  activeMembers().filter(function(m){return m.id!==me;}).forEach(function(m){
+    var o=document.createElement('option');o.value=m.id;o.textContent=m.name;sel.appendChild(o);});
+  if(otherId&&otherId!==me)sel.value=otherId;
   document.getElementById('payAmount').value=amount?plain(amount):'';
   document.getElementById('payDate').value=today();
   document.getElementById('payErr').textContent='';
+  drawPayDir();
   openSheet('sheetPay');
+}
+function drawPayDir(){
+  document.getElementById('dirSent').className=payDir==='sent'?'on':'';
+  document.getElementById('dirGot').className=payDir==='got'?'on':'';
+  document.getElementById('payOtherLabel').textContent=payDir==='sent'?'To':'From';
+  document.getElementById('payHint').textContent=payDir==='sent'
+    ? 'They\u2019ll get a prompt to confirm it arrived. It only counts once they do.'
+    : 'Counts straight away — you\u2019re the one confirming it landed.';
 }
 
 /* ---------- templates ---------- */
@@ -971,7 +1340,9 @@ function openTpl(t){
   document.getElementById('tplAmount').value=tplForm.amount?plain(tplForm.amount):'';
   document.getElementById('tplErr').textContent='';
   document.getElementById('tplDelete').style.display=t?'block':'none';
+  closeSheets();                     // drop the Settings sheet first
   drawTplChips(); openSheet('sheetTpl');
+  setTimeout(function(){var n=document.getElementById('tplName'); if(!t)n.focus();},90);
 }
 function drawTplChips(){
   var c=document.getElementById('tplCats'); c.innerHTML='';
@@ -1028,7 +1399,7 @@ function openSettings(){
 function buildCSV(){
   var rows=[['Date','Status','Type','Description','Note','Category','Split','Amount (£)','Paid by','Added by','Deleted by'].concat(state.members.map(function(m){return m.name+' owes (£)';}))];
   entryList().slice().reverse().forEach(function(e){
-    var r=[e.date,e.voided?'deleted':'active',e.type,(e.desc||'').replace(/"/g,"'"),(e.note||'').replace(/"/g,"'"),
+    var r=[e.date,e.voided?'deleted':(e.status||'active'),e.type,(e.desc||'').replace(/"/g,"'"),(e.note||'').replace(/"/g,"'"),
       e.category||'',e.splitMode||'equal',plain(e.amount),memberById(e.paidBy).name,
       e.addedBy?memberById(e.addedBy).name:'',e.voidedBy?memberById(e.voidedBy).name:''];
     state.members.forEach(function(m){r.push(plain((e.shares&&e.shares[m.id])||0));});
@@ -1075,11 +1446,13 @@ function copyCSV(){
 
 /* ---------- wiring ---------- */
 function wire(){
-  document.getElementById('scrim').onclick=closeSheets;
+  document.getElementById('scrim').onclick=function(){askCb=null;closeSheets();};
+  document.getElementById('askYes').onclick=function(){askDone(true);};
+  document.getElementById('askNo').onclick=function(){askDone(false);};
   Array.prototype.forEach.call(document.querySelectorAll('[data-close]'),function(b){b.onclick=closeSheets;});
   document.getElementById('addBtn').onclick=openExpense;
-  document.getElementById('payBtn').onclick=function(){openPay(me,null,0);};
-  document.getElementById('openSettings').onclick=openSettings;
+  document.getElementById('payBtn').onclick=function(){openPay('sent',null,0);};
+  document.getElementById('settingsBtn').onclick=openSettings;
   document.getElementById('exportBtn').onclick=openCSV;
   document.getElementById('csvDownload').onclick=downloadCSV;
   document.getElementById('csvCopy').onclick=copyCSV;
@@ -1103,11 +1476,16 @@ function wire(){
   document.getElementById('savePreset').onclick=function(){
     var ids=activeMembers().filter(function(m){return form.split[m.id];}).map(function(m){return m.id;});
     if(!ids.length){document.getElementById('expErr').textContent='Pick who this is split between first.';return;}
-    var name=prompt('Name this split (e.g. "Food shop")');
-    if(!name||!name.trim())return;
-    var w={}; ids.forEach(function(i){w[i]=parseFloat(form.weights[i])||0;});
-    state.presets.push({id:uid('ps'),name:name.trim(),mode:form.mode,weights:w});
-    pushMeta(); drawPresetChips();
+    var snapshot={}; ids.forEach(function(i){snapshot[i]=parseFloat(form.weights[i])||0;});
+    var mode=form.mode;
+    ask({title:'Save this split', message:'It\u2019ll appear as a chip here and in Settings, for everyone.',
+         input:true, inputLabel:'Name', placeholder:'e.g. Food shop', okLabel:'Save'},
+        function(name,ok){
+          if(!ok||!name)return;
+          state.presets.push({id:uid('ps'),name:name,mode:mode,weights:snapshot});
+          pushMeta();
+          openExpenseAgain();
+        });
   };
 
   document.getElementById('saveExpense').onclick=function(){
@@ -1151,22 +1529,65 @@ function wire(){
     closeSheets(); pushEntry(e);
   };
 
+  document.getElementById('dirSent').onclick=function(){payDir='sent';drawPayDir();};
+  document.getElementById('dirGot').onclick=function(){payDir='got';drawPayDir();};
+
   document.getElementById('savePay').onclick=function(){
     var err=document.getElementById('payErr'); err.textContent='';
     var amt=toPence(document.getElementById('payAmount').value);
-    var from=document.getElementById('payFrom').value,to=document.getElementById('payTo').value;
+    var other=document.getElementById('payOther').value;
     if(isNaN(amt)||amt<=0){err.textContent='Enter an amount above zero.';return;}
-    if(from===to){err.textContent='Pick two different people.';return;}
-    var sh={};sh[to]=amt;
-    closeSheets();
-    pushEntry({id:uid('p'),type:'payment',desc:memberById(from).name+' → '+memberById(to).name,
-      category:'Payment',amount:amt,paidBy:from,shares:sh,addedBy:me,
-      date:document.getElementById('payDate').value||today(),createdAt:Date.now()});
+    if(!other||other===me){err.textContent='Pick the other person.';return;}
+    var from = payDir==='sent'? me : other;
+    var to   = payDir==='sent'? other : me;
+    var sh={}; sh[to]=amt;
+    // If you received it, you're already confirming. If you sent it, they must.
+    var status = payDir==='sent' ? 'pending' : 'confirmed';
+    var e={id:uid('p'),type:'payment',desc:memberById(from).name+' → '+memberById(to).name,
+      category:'Payment',amount:amt,paidBy:from,shares:sh,addedBy:me,status:status,
+      date:document.getElementById('payDate').value||today(),createdAt:Date.now()};
+    if(status==='confirmed'){e.confirmedBy=me;e.confirmedAt=Date.now();}
+    closeSheets(); pushEntry(e);
   };
 
   document.getElementById('addMember').onclick=function(){
     state.members.push({id:uid('m'),name:'New flatmate',active:true}); openSettings(); };
   document.getElementById('addTpl').onclick=function(){openTpl(null);};
+  document.getElementById('tplClose').onclick=function(){closeSheets();openSettings();};
+  document.getElementById('addPreset').onclick=function(){openPreset(null);};
+  document.getElementById('psClose').onclick=function(){closeSheets();openSettings();};
+  document.getElementById('psModePercent').onclick=function(){psForm.mode='percent';psForm.weights={};drawPresetForm();};
+  document.getElementById('psModeShares').onclick=function(){psForm.mode='shares';psForm.weights={};drawPresetForm();};
+  document.getElementById('psDelete').onclick=function(){
+    var id=psForm.id, nm=psForm.name||'this split';
+    ask({title:'Delete '+nm+'?', message:'Expenses already logged with it are unaffected.',
+         okLabel:'Delete', danger:true},
+        function(v,ok){
+          if(!ok){openPreset(state.presets.filter(function(x){return x.id===id;})[0]);return;}
+          state.presets=state.presets.filter(function(x){return x.id!==id;});
+          pushMeta(); openSettings();
+        });
+  };
+  document.getElementById('psSave').onclick=function(){
+    var err=document.getElementById('psErr'); err.textContent='';
+    var name=document.getElementById('psName').value.trim();
+    if(!name){err.textContent='Give it a name.';return;}
+    var ids=activeMembers().filter(function(m){return psForm.inc[m.id];}).map(function(m){return m.id;});
+    if(!ids.length){err.textContent='Pick at least one person.';return;}
+    var w={},tw=0;
+    for(var i=0;i<ids.length;i++){
+      var v=parseFloat(psForm.weights[ids[i]]);
+      if(isNaN(v)||v<0){err.textContent='Fill in a number for everyone included.';return;}
+      w[ids[i]]=v; tw+=v;
+    }
+    if(tw<=0){err.textContent='At least one person needs more than zero.';return;}
+    if(psForm.mode==='percent'&&Math.abs(tw-100)>0.011){
+      err.textContent='Percentages must total 100 — currently '+(Math.round(tw*100)/100)+'.';return;}
+    var rec={id:psForm.id,name:name,mode:psForm.mode,weights:w};
+    if(psForm.isNew)state.presets.push(rec);
+    else state.presets=state.presets.map(function(x){return x.id===rec.id?rec:x;});
+    pushMeta(); closeSheets(); openSettings();
+  };
 
   document.getElementById('tplFixed').onclick=function(){tplForm.kind='fixed';drawTplChips();};
   document.getElementById('tplVariable').onclick=function(){tplForm.kind='variable';drawTplChips();};
@@ -1187,9 +1608,14 @@ function wire(){
     pushMeta(); render(); closeSheets(); openSettings();
   };
   document.getElementById('tplDelete').onclick=function(){
-    if(!confirm('Delete this recurring bill? Past entries stay.'))return;
-    state.templates=state.templates.filter(function(t){return t.id!==tplForm.id;});
-    pushMeta(); render(); closeSheets(); openSettings();
+    var id=tplForm.id, nm=tplForm.name||'this bill';
+    ask({title:'Delete '+nm+'?', message:'Bills already logged from it stay in the ledger.',
+         okLabel:'Delete', danger:true},
+        function(v,ok){
+          if(!ok){openTpl(state.templates.filter(function(t){return t.id===id;})[0]);return;}
+          state.templates=state.templates.filter(function(t){return t.id!==id;});
+          pushMeta(); render(); openSettings();
+        });
   };
 
   document.getElementById('saveSettings').onclick=function(){
