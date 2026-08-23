@@ -491,10 +491,12 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 (function(){
 'use strict';
 
-var LS='flatledger:v2', LS_ME='flatledger:me', LS_FB='flatledger:fb', LS_ROOM='flatledger:room';
+var LS='flatledger:v2', LS_ME='flatledger:me', LS_FB='flatledger:fb', LS_ROOM='flatledger:room',
+    LS_OUT='flatledger:outbox';
 var CATS=['Rent','Bills','Groceries','Eating out','Household','Transport','Other'];
 
 var state=null, me=null, db=null, fbRefs=null, online=false, suppress=false, searchTerm='', showVoid=false;
+var outbox=[], flushing=false, flushTimer=null;
 var form={cat:'Groceries',paidBy:null,split:{},mode:'equal',custom:{},tplId:null};
 var tplForm=null;
 
@@ -557,15 +559,65 @@ function normalise(d){
 function saveLocal(){try{localStorage.setItem(LS,JSON.stringify(state));}catch(e){}}
 function loadLocal(){try{var r=localStorage.getItem(LS);return r?normalise(JSON.parse(r)):null;}catch(e){return null;}}
 
+/* ---------- outbox ----------
+   Every change is written to localStorage as a queued job BEFORE any attempt
+   to reach the server. Nothing depends on the app staying open: if the tab is
+   killed on the Tube, the job is still on disk and goes out on next launch.
+   Jobs are keyed, so ten edits to one entry collapse into one write.        */
+function loadOutbox(){
+  try{ var r=localStorage.getItem(LS_OUT); outbox=r?JSON.parse(r):[]; }catch(e){ outbox=[]; }
+  if(!Array.isArray(outbox))outbox=[];
+}
+function saveOutbox(){
+  try{ localStorage.setItem(LS_OUT,JSON.stringify(outbox)); }
+  catch(e){ status('Phone storage is full — some changes may not sync'); }
+}
+function enqueue(job){
+  job.key=job.kind+':'+(job.id||'meta');
+  job.queuedAt=Date.now();
+  outbox=outbox.filter(function(j){return j.key!==job.key;});  // newest wins
+  outbox.push(job);
+  saveOutbox(); flush();
+}
+function flush(){
+  if(flushing||!outbox.length)return;
+  if(!fbRefs){ renderSync(); return; }
+  flushing=true; renderSync();
+  var job=outbox[0];
+  var op;
+  if(job.kind==='meta')        op=fbRefs.set(fbRefs.meta,job.payload);
+  else if(job.kind==='entry')  op=fbRefs.set(fbRefs.child(fbRefs.entries,job.id),job.payload);
+  else if(job.kind==='delete') op=fbRefs.remove(fbRefs.child(fbRefs.entries,job.id));
+  else { outbox.shift(); saveOutbox(); flushing=false; return flush(); }
+
+  op.then(function(){
+    outbox=outbox.filter(function(j){return j.key!==job.key;});
+    saveOutbox(); flushing=false; renderSync();
+    if(outbox.length)flush();
+  }).catch(function(){
+    // Still offline, or the write failed. Leave it queued and try again later.
+    flushing=false; renderSync(); scheduleFlush();
+  });
+}
+function scheduleFlush(){
+  if(flushTimer||!outbox.length)return;
+  flushTimer=setTimeout(function(){ flushTimer=null; flush(); },15000);
+}
+function renderSync(){
+  var n=outbox.length;
+  if(n)      status(n+' change'+(n===1?'':'s')+' waiting to sync');
+  else if(online) status('Synced');
+  else       status('This phone only — set up sync in Settings');
+}
+
 function pushMeta(){
   saveLocal();
-  if(fbRefs){fbRefs.set(fbRefs.meta,{flatName:state.flatName,members:state.members,templates:state.templates,presets:state.presets})
-    .catch(function(){status('Offline — saved on this phone only');});}
+  enqueue({kind:'meta',payload:{flatName:state.flatName,members:state.members,
+    templates:state.templates,presets:state.presets}});
 }
 function pushEntry(e){
   state.entries[e.id]=e; saveLocal(); render();
-  if(fbRefs){fbRefs.set(fbRefs.child(fbRefs.entries,e.id),e)
-    .catch(function(){status('Offline — will not sync until you reconnect');});}
+  enqueue({kind:'entry',id:e.id,payload:e});
 }
 function voidEntry(id,reason){
   var e=state.entries[id]; if(!e)return;
@@ -580,7 +632,16 @@ function restoreEntry(id){
 }
 function purgeEntry(id){
   delete state.entries[id]; saveLocal(); render();
-  if(fbRefs){fbRefs.remove(fbRefs.child(fbRefs.entries,id)).catch(function(){});}
+  enqueue({kind:'delete',id:id});
+}
+// Four people logging expenses means the same food shop gets entered twice.
+// Same amount on the same day is the signal worth flagging.
+function findDuplicate(amount,date,ignoreId){
+  var hit=entryList().filter(function(e){
+    return e.type==='expense' && !e.voided && e.id!==ignoreId &&
+           e.amount===amount && e.date===date;
+  });
+  return hit.length?hit[0]:null;
 }
 // A payment only moves money once the person who received it says it arrived.
 function countsInBalance(e){
@@ -665,7 +726,8 @@ async function connect(){
       state.entries=snap.val()||{};
       saveLocal(); render();
     });
-    online=true; status('Synced');
+    online=true; renderSync();
+    flush();                       // anything queued from an earlier session goes now
     // seed if the room is empty
     setTimeout(function(){ if(!Object.keys(state.entries).length) pushMeta(); },1200);
   }catch(e){ status('Could not reach sync — running on this phone'); }
@@ -1526,6 +1588,18 @@ function wire(){
     if(form.editingId){e.editedBy=me;e.editedAt=Date.now();}
     if(weights)e.weights=weights;
     if(form.tplId){e.templateId=form.tplId;e.period=form.period||thisPeriod();}
+
+    var dupe=findDuplicate(e.amount,e.date,form.editingId);
+    if(dupe){
+      ask({title:'Already logged?',
+           message:money(dupe.amount)+' on '+prettyDate(dupe.date).toLowerCase()+' is already in the ledger — "'+
+                   (dupe.desc||'no description')+'", added by '+
+                   memberById(dupe.addedBy||dupe.paidBy).name+
+                   '. Add this one as well?',
+           okLabel:'Add anyway', cancelLabel:'Back'},
+          function(v,ok){ if(ok){ closeSheets(); pushEntry(e); } });
+      return;
+    }
     closeSheets(); pushEntry(e);
   };
 
@@ -1636,12 +1710,24 @@ function wire(){
 
 /* ---------- boot ---------- */
 (async function init(){
+  // Installed apps are normally granted this; it stops the browser clearing
+  // the outbox when the phone is low on space.
+  if(navigator.storage&&navigator.storage.persist){
+    try{ navigator.storage.persist(); }catch(e){}
+  }
+  loadOutbox();
   state=loadLocal()||blank();
   try{ me=localStorage.getItem(LS_ME); }catch(e){}
   if(!me||memberById(me).active===false)me=(activeMembers()[0]||{}).id;
   wire(); render();
-  status(localStorage.getItem(LS_FB)?'Connecting…':'This phone only — set up sync in Settings');
+  if(outbox.length)renderSync();
+  else status(localStorage.getItem(LS_FB)?'Connecting…':'This phone only — set up sync in Settings');
   await connect();
+  window.addEventListener('online', function(){ flush(); });
+  document.addEventListener('visibilitychange', function(){ if(!document.hidden)flush(); });
+  window.addEventListener('focus', function(){ flush(); });
+  if(outbox.length)scheduleFlush();
+
   if('serviceWorker' in navigator){ try{ navigator.serviceWorker.register('sw.js'); }catch(e){} }
 })();
 })();
