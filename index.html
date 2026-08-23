@@ -559,7 +559,7 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
   <div class="divider"></div>
 
   <div class="field"><span class="label">Receipt reader — optional</span>
-    <p class="hint" style="margin-top:0">Paste the address of your receipt-reading Worker. Leave blank and receipts still attach, they just won't be read automatically.</p>
+    <p class="hint" style="margin-top:0">Paste the address of your receipt-reading Worker. One person sets this and it reaches everyone. Leave blank and receipts still attach, they just won't be read automatically.</p>
     <input class="input" id="ocrUrl" type="url" placeholder="https://flat-receipts.yourname.workers.dev" autocomplete="off" style="margin-top:8px">
   </div>
 
@@ -637,6 +637,7 @@ function blank(){
       {id:'t5',name:'Heating',category:'Bills',kind:'variable',amount:0,payer:'m1',split:Object.assign({},all)}
     ],
     presets:[{id:'ps1',name:'Food shop',mode:'percent',weights:{m1:40,m2:20,m3:20,m4:20}}],
+    ocrUrl:'',
     entries:{}
   };
 }
@@ -647,6 +648,7 @@ function normalise(d){
   d.members=Array.isArray(d.members)&&d.members.length?d.members:b.members;
   d.templates=Array.isArray(d.templates)?d.templates:[];
   d.presets=Array.isArray(d.presets)?d.presets:[];
+  d.ocrUrl=typeof d.ocrUrl==='string'?d.ocrUrl:'';
   if(!d.entries||typeof d.entries!=='object')d.entries={};
   d.templates.forEach(function(t){if(!t.split||typeof t.split!=='object')t.split={};});
   return d;
@@ -712,7 +714,7 @@ function renderSync(){
 function pushMeta(){
   saveLocal();
   enqueue({kind:'meta',payload:{flatName:state.flatName,members:state.members,
-    templates:state.templates,presets:state.presets}});
+    templates:state.templates,presets:state.presets,ocrUrl:state.ocrUrl||''}});
 }
 function pushEntry(e){
   state.entries[e.id]=e; saveLocal(); render();
@@ -823,7 +825,12 @@ async function connect(){
       if(Array.isArray(v.members)&&v.members.length)state.members=v.members;
       state.templates=Array.isArray(v.templates)?v.templates:[];
       state.presets=Array.isArray(v.presets)?v.presets:[];
+      state.ocrUrl=typeof v.ocrUrl==='string'?v.ocrUrl:'';
+      // Mirror it locally so the shared value always wins — including when
+      // someone clears it, which must reach phones that had an older copy.
+      try{ localStorage.setItem(LS_OCR,state.ocrUrl); }catch(e){}
       saveLocal(); render();
+      drawReadButton();          // a URL arriving from another phone reveals the button
     });
     dbMod.onValue(fbRefs.entries,function(snap){
       state.entries=snap.val()||{};
@@ -1566,7 +1573,12 @@ function commitExpense(e,photo,dropped){
    The photo goes to your own Cloudflare Worker, which holds the API key and
    talks to the model. Nothing is ever saved automatically: the numbers land
    in the form and you confirm them.                                        */
-function ocrUrl(){ try{ return (localStorage.getItem(LS_OCR)||'').trim(); }catch(e){ return ''; } }
+// Flat-wide, not per-phone: one person sets it, everyone gets it.
+// The old per-device value is still honoured so nobody has to re-enter it.
+function ocrUrl(){
+  if(state&&state.ocrUrl)return state.ocrUrl.trim();
+  try{ return (localStorage.getItem(LS_OCR)||'').trim(); }catch(e){ return ''; }
+}
 
 function drawReadButton(){
   var btn=document.getElementById('readBtn');
@@ -1880,7 +1892,7 @@ function openSettings(){
     row.appendChild(idx);row.appendChild(inp);row.appendChild(tog);box.appendChild(row);
   });
   drawSettingsTemplates(); drawSettingsPresets();
-  document.getElementById('ocrUrl').value=localStorage.getItem(LS_OCR)||'';
+  document.getElementById('ocrUrl').value=state.ocrUrl||localStorage.getItem(LS_OCR)||'';
   document.getElementById('fbConfig').value=localStorage.getItem(LS_FB)||'';
   document.getElementById('roomCode').value=localStorage.getItem(LS_ROOM)||'';
   document.getElementById('setErr').textContent='';
@@ -2160,10 +2172,11 @@ function wire(){
       var m=memberById(inp.dataset.mid), v=inp.value.trim(); if(v)m.name=v; });
     state.flatName=document.getElementById('flatNameInput').value.trim()||'Our flat';
 
-    var ocr=document.getElementById('ocrUrl').value.trim();
+    var ocr=document.getElementById('ocrUrl').value.trim().replace(/\/+$/,'');
     if(ocr&&!/^https:\/\/\S+$/.test(ocr)){
       document.getElementById('setErr').textContent='The reader address must start with https://';return;}
-    try{ localStorage.setItem(LS_OCR,ocr.replace(/\/+$/,'')); }catch(e){}
+    state.ocrUrl=ocr;                       // goes out with the rest of the flat settings
+    try{ localStorage.setItem(LS_OCR,ocr); }catch(e){}   // so it still works before sync
 
     var cfg=document.getElementById('fbConfig').value.trim();
     var room=document.getElementById('roomCode').value.trim();
