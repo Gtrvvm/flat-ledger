@@ -651,6 +651,10 @@ var meLocked=false;
 /* Presence is keyed by member AND device, so one person on a phone and a laptop
    doesn't knock themselves offline when they close one of them. */
 var presence={}, deviceId=null;
+/* The ledger only grows. Rendering every entry means a slow page and a heavy
+   DOM after a year, so it pages. Kept outside render() so a background update
+   doesn't collapse what you've already expanded. */
+var PAGE=8, shownCount=PAGE;
 var form={cat:'Groceries',paidBy:null,split:{},mode:'equal',custom:{},tplId:null};
 var tplForm=null;
 
@@ -903,10 +907,16 @@ function cancelPayment(id){
   if(e.status!=='pending'||e.addedBy!==me){ voidEntry(id,'cancelled'); return; }
   purgeEntry(id);
 }
-// A payment is between two named people; nobody else gets to alter it.
-function isPartyTo(e){
-  if(e.type!=='payment')return true;              // expenses belong to the whole flat
-  return e.paidBy===me || !!(e.shares&&e.shares[me]);
+/* Who may change an entry.
+   Expenses: only whoever logged it. They know what it was; nobody else should
+   quietly rewrite someone's shopping. Repeat and View receipt stay open to all.
+   Payments: the two people involved, since it moves money between them.
+   Entries from before authorship was recorded fall back to who paid, otherwise
+   they would belong to nobody. */
+function ownerOf(e){ return e.addedBy || e.paidBy; }
+function canEdit(e){
+  if(e.type==='payment') return e.paidBy===me || !!(e.shares&&e.shares[me]);
+  return ownerOf(e)===me;
 }
 function confirmPayment(id){
   var e=state.entries[id]; if(!e)return;
@@ -1178,14 +1188,28 @@ function render(){
     el.insertAdjacentHTML('beforeend','<div class="empty">'+(searchTerm?'Nothing matches that.':'Nothing logged yet. Add the first expense and everyone sees it.')+'</div>');
     return;
   }
-  var groups={}; list.forEach(function(e){(groups[e.date]=groups[e.date]||[]).push(e);});
-  Object.keys(groups).sort().reverse().slice(0,searchTerm?200:60).forEach(function(d){
+  var page=list.slice(0,shownCount), remaining=list.length-page.length;
+  var groups={}; page.forEach(function(e){(groups[e.date]=groups[e.date]||[]).push(e);});
+  Object.keys(groups).sort().reverse().forEach(function(d){
     var g=document.createElement('div'); g.className='daygroup';
     var lab=document.createElement('div'); lab.className='daylabel'; lab.textContent=prettyDate(d);
     g.appendChild(lab);
     groups[d].forEach(function(e){g.appendChild(entryRow(e));});
     el.appendChild(g);
   });
+  if(remaining>0){
+    var more=document.createElement('button');
+    more.className='btn'; more.style.width='100%'; more.style.marginTop='12px';
+    more.textContent='Show '+Math.min(PAGE,remaining)+' more · '+remaining+' older';
+    more.onclick=function(){ shownCount+=PAGE; render(); };
+    el.appendChild(more);
+  } else if(list.length>PAGE){
+    var less=document.createElement('button');
+    less.className='btn'; less.style.width='100%'; less.style.marginTop='12px';
+    less.textContent='Collapse';
+    less.onclick=function(){ shownCount=PAGE; render(); };
+    el.appendChild(less);
+  }
 }
 
 function drawSetup(){
@@ -1348,7 +1372,13 @@ function openActions(e){
     b.onclick=fn; box.appendChild(b);
   }
   if(e.voided){
-    btn('Restore','Puts it back into the balances','',function(){closeSheets();restoreEntry(e.id);});
+    if(canEdit(e)||e.voidedBy===me){
+      btn('Restore','Puts it back into the balances','',function(){closeSheets();restoreEntry(e.id);});
+    } else {
+      var rn=document.createElement('p'); rn.className='hint'; rn.style.margin='4px 0 0';
+      rn.textContent='Only '+memberById(ownerOf(e)).name+' or '+memberById(e.voidedBy).name+' can restore this.';
+      box.appendChild(rn);
+    }
   } else if(e.type==='payment'&&e.status==='pending'&&e.addedBy===me){
     btn('Cancel payment','Removes it — it never counted','danger',function(){
       ask({title:'Cancel this payment?', message:money(e.amount)+' — it never counted, so this removes it completely.',
@@ -1367,8 +1397,10 @@ function openActions(e){
     if(!isPay&&e.hasPhoto){
       btn('View receipt','Opens the photo','',function(){openShot(e);});
     }
-    if(!isPay){
+    if(!isPay&&canEdit(e)){
       btn('Edit','Change the amount, split or note','',function(){closeSheets();editEntry(e);});
+    }
+    if(!isPay){
       btn('Repeat','Log it again today with the same split','',function(){closeSheets();repeatEntry(e);});
     }
     // Confirmed too quickly? Put it back to pending instead of deleting it.
@@ -1381,7 +1413,7 @@ function openActions(e){
             function(v,ok){ if(ok)unconfirmPayment(e.id); });
       });
     }
-    if(isPartyTo(e)){
+    if(canEdit(e)){
       btn('Delete','Everyone sees who deleted it','danger',function(){
         ask({title:'Delete this entry?',
              message:(e.desc||'This entry')+' — '+money(e.amount)+
@@ -1392,9 +1424,11 @@ function openActions(e){
       });
     } else {
       var note=document.createElement('p'); note.className='hint'; note.style.margin='4px 0 0';
-      note.textContent='Only '+memberById(e.paidBy).name+' and '+
-        Object.keys(e.shares||{}).map(function(id){return memberById(id).name;}).join(', ')+
-        ' can change this payment.';
+      note.textContent = isPay
+        ? 'Only '+memberById(e.paidBy).name+' and '+
+          Object.keys(e.shares||{}).map(function(id){return memberById(id).name;}).join(', ')+
+          ' can change this payment.'
+        : 'Only '+memberById(ownerOf(e)).name+' can edit or delete this. Ask them if it looks wrong.';
       box.appendChild(note);
     }
   }
@@ -2320,8 +2354,10 @@ function wire(){
   };
 
   var sIn=document.getElementById('search'), sClr=document.getElementById('searchClear');
-  sIn.oninput=function(){ searchTerm=sIn.value.trim(); sClr.style.display=searchTerm?'block':'none'; render(); };
-  sClr.onclick=function(){ sIn.value=''; searchTerm=''; sClr.style.display='none'; render(); sIn.focus(); };
+  sIn.oninput=function(){ searchTerm=sIn.value.trim(); shownCount=PAGE;
+    sClr.style.display=searchTerm?'block':'none'; render(); };
+  sClr.onclick=function(){ sIn.value=''; searchTerm=''; shownCount=PAGE;
+    sClr.style.display='none'; render(); sIn.focus(); };
 
   document.getElementById('savePreset').onclick=function(){
     var ids=activeMembers().filter(function(m){return form.split[m.id];}).map(function(m){return m.id;});
