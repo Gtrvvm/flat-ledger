@@ -2081,10 +2081,12 @@ function statementFor(period){
     byCat[c]=(byCat[c]||0)+e.amount;
     if(!per[e.paidBy])per[e.paidBy]={paid:0,share:0,cats:{}};
     per[e.paidBy].paid+=e.amount;
-    per[e.paidBy].cats[c]=(per[e.paidBy].cats[c]||0)+e.amount;   // what they fronted, by category
     Object.keys(e.shares||{}).forEach(function(id){
       if(!per[id])per[id]={paid:0,share:0,cats:{}};
       per[id].share+=e.shares[id];
+      // Their actual cost, not what they fronted: rent split four ways is
+      // £650 each, not £2,600 for whoever's name is on the standing order.
+      per[id].cats[c]=(per[id].cats[c]||0)+e.shares[id];
     });
   });
   var cats=Object.keys(byCat).map(function(c){return {name:c,amount:byCat[c]};})
@@ -2143,7 +2145,7 @@ function drawStatement(){
     row.tabIndex=0;
     row.setAttribute('role','button');
     row.setAttribute('aria-expanded', open?'true':'false');
-    row.setAttribute('aria-label','What '+m.name+' paid for, by category');
+    row.setAttribute('aria-label','What '+m.name+' spent, by category');
     function toggle(){ stmtOpen[m.id]=!stmtOpen[m.id]; drawStatement(); }
     row.onclick=toggle;
     row.onkeydown=function(ev){ if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();toggle();} };
@@ -2154,7 +2156,7 @@ function drawStatement(){
       var cats=Object.keys(p.cats||{}).map(function(c){return {name:c,amount:p.cats[c]};})
         .sort(function(a,b){return b.amount-a.amount;});
       if(!cats.length){
-        det.innerHTML='<div class="pd-none">'+esc(m.name)+' didn\u2019t pay for anything this month.</div>';
+        det.innerHTML='<div class="pd-none">Nothing came out of '+esc(m.name)+'\u2019s share this month.</div>';
       } else {
         var top=cats[0].amount;
         cats.forEach(function(c){
@@ -2170,7 +2172,7 @@ function drawStatement(){
     }
   });
   var note=document.createElement('p'); note.className='hint';
-  note.textContent='Tap a name to see what they paid for. Balance is what they paid minus what they owed, this month alone — transfers are listed separately.';
+  note.textContent='Tap a name to see what they actually spent, by category — their share, not what they fronted. Balance is paid minus owed, this month alone.';
   box.appendChild(note);
 
   if(d.payments.length){
