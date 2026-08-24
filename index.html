@@ -258,6 +258,19 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 .per-fig{font-family:var(--mono);font-size:12px;width:72px;text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
 .per-net{font-family:var(--mono);font-size:12px;font-weight:700;width:76px;text-align:right;font-variant-numeric:tabular-nums}
 .per-net.up{color:var(--blue)} .per-net.down{color:var(--red)}
+.per-row.tappable{cursor:pointer;border-radius:8px;margin:0 -8px;padding-left:8px;padding-right:8px}
+.per-row.tappable:active{background:var(--paper)}
+.per-row .pchev{color:var(--line);font-size:14px;width:12px;text-align:right;flex-shrink:0;
+  transition:transform .15s}
+.per-row.open .pchev{transform:rotate(90deg);color:var(--muted)}
+.per-detail{padding:4px 0 12px 2px;margin-bottom:4px;border-bottom:1px dashed var(--line-soft)}
+.per-detail .pd-row{display:flex;align-items:center;gap:8px;padding:5px 0}
+.per-detail .pd-name{flex:1;font-size:12px;color:var(--ink-soft)}
+.per-detail .pd-bar{width:60px;height:5px;background:var(--line-soft);border-radius:3px;overflow:hidden;flex-shrink:0}
+.per-detail .pd-fill{height:100%;background:var(--ink);border-radius:3px}
+.per-detail .pd-amt{font-family:var(--mono);font-size:12px;width:70px;text-align:right;
+  font-variant-numeric:tabular-nums}
+.per-detail .pd-none{font-size:12px;color:var(--muted);padding:4px 0}
 .per-head{display:flex;gap:8px;font-family:var(--mono);font-size:8px;letter-spacing:.1em;text-transform:uppercase;
   color:var(--muted);padding-bottom:6px}
 .per-head .a{flex:1} .per-head .b{width:72px;text-align:right} .per-head .c{width:76px;text-align:right}
@@ -2039,7 +2052,7 @@ function openShot(e){
 }
 
 /* ---------- monthly statement ---------- */
-var stmtPeriod=null;
+var stmtPeriod=null, stmtOpen={};
 function monthLabel(p){
   var d=new Date(p+'-01T12:00:00');
   return d.toLocaleDateString('en-GB',{month:'long',year:'numeric'});
@@ -2061,15 +2074,16 @@ function statementFor(period){
     (e.type==='payment'?pay:ex).push(e);
   });
   var total=0, byCat={}, per={};
-  state.members.forEach(function(m){ per[m.id]={paid:0,share:0}; });
+  state.members.forEach(function(m){ per[m.id]={paid:0,share:0,cats:{}}; });
   ex.forEach(function(e){
     total+=e.amount;
     var c=e.category||'Other';
     byCat[c]=(byCat[c]||0)+e.amount;
-    if(!per[e.paidBy])per[e.paidBy]={paid:0,share:0};
+    if(!per[e.paidBy])per[e.paidBy]={paid:0,share:0,cats:{}};
     per[e.paidBy].paid+=e.amount;
+    per[e.paidBy].cats[c]=(per[e.paidBy].cats[c]||0)+e.amount;   // what they fronted, by category
     Object.keys(e.shares||{}).forEach(function(id){
-      if(!per[id])per[id]={paid:0,share:0};
+      if(!per[id])per[id]={paid:0,share:0,cats:{}};
       per[id].share+=e.shares[id];
     });
   });
@@ -2077,7 +2091,7 @@ function statementFor(period){
     .sort(function(a,b){return b.amount-a.amount;});
   return {period:period,total:total,cats:cats,per:per,count:ex.length,payments:pay};
 }
-function openStatement(){ stmtPeriod=thisPeriod(); drawStatement(); openSheet('sheetStmt'); }
+function openStatement(){ stmtPeriod=thisPeriod(); stmtOpen={}; drawStatement(); openSheet('sheetStmt'); }
 function drawStatement(){
   var d=statementFor(stmtPeriod), months=monthsWithData();
   document.getElementById('stmtMonth').textContent=monthLabel(stmtPeriod);
@@ -2115,18 +2129,48 @@ function drawStatement(){
   head.innerHTML='<span class="a"></span><span class="b">Paid</span><span class="b">Their share</span><span class="c">Balance</span>';
   box.appendChild(head);
   state.members.forEach(function(m){
-    var p=d.per[m.id]||{paid:0,share:0};
+    var p=d.per[m.id]||{paid:0,share:0,cats:{}};
     if(!p.paid&&!p.share)return;
     var net=p.paid-p.share, dir=net>0?'up':net<0?'down':'';
-    var row=document.createElement('div'); row.className='per-row';
-    row.innerHTML='<span class="per-name">'+esc(m.name)+(m.id===me?' (you)':'')+'</span>'+
+    var open=!!stmtOpen[m.id];
+    var row=document.createElement('div');
+    row.className='per-row tappable'+(open?' open':'');
+    row.innerHTML='<span class="pchev">\u203A</span>'+
+      '<span class="per-name">'+esc(m.name)+(m.id===me?' (you)':'')+'</span>'+
       '<span class="per-fig">'+money(p.paid)+'</span>'+
       '<span class="per-fig">'+money(p.share)+'</span>'+
       '<span class="per-net '+dir+'">'+(net===0?'\u2014':(net>0?'+':'\u2212')+money(Math.abs(net)))+'</span>';
+    row.tabIndex=0;
+    row.setAttribute('role','button');
+    row.setAttribute('aria-expanded', open?'true':'false');
+    row.setAttribute('aria-label','What '+m.name+' paid for, by category');
+    function toggle(){ stmtOpen[m.id]=!stmtOpen[m.id]; drawStatement(); }
+    row.onclick=toggle;
+    row.onkeydown=function(ev){ if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();toggle();} };
     box.appendChild(row);
+
+    if(open){
+      var det=document.createElement('div'); det.className='per-detail';
+      var cats=Object.keys(p.cats||{}).map(function(c){return {name:c,amount:p.cats[c]};})
+        .sort(function(a,b){return b.amount-a.amount;});
+      if(!cats.length){
+        det.innerHTML='<div class="pd-none">'+esc(m.name)+' didn\u2019t pay for anything this month.</div>';
+      } else {
+        var top=cats[0].amount;
+        cats.forEach(function(c){
+          var r=document.createElement('div'); r.className='pd-row';
+          r.innerHTML='<span class="pd-name">'+esc(c.name)+'</span>'+
+            '<span class="pd-bar"><span class="pd-fill" style="width:'+
+              Math.round(c.amount/top*100)+'%;display:block"></span></span>'+
+            '<span class="pd-amt">'+money(c.amount)+'</span>';
+          det.appendChild(r);
+        });
+      }
+      box.appendChild(det);
+    }
   });
   var note=document.createElement('p'); note.className='hint';
-  note.textContent='Balance is what each person paid minus what they owed, for this month alone. Transfers between you are listed separately.';
+  note.textContent='Tap a name to see what they paid for. Balance is what they paid minus what they owed, this month alone — transfers are listed separately.';
   box.appendChild(note);
 
   if(d.payments.length){
@@ -2317,8 +2361,8 @@ function wire(){
           if(live){ delete live.hasPhoto; pushEntry(live); }
         });
   };
-  document.getElementById('stmtPrev').onclick=function(){stmtPeriod=shiftPeriod(stmtPeriod,-1);drawStatement();};
-  document.getElementById('stmtNext').onclick=function(){stmtPeriod=shiftPeriod(stmtPeriod,1);drawStatement();};
+  document.getElementById('stmtPrev').onclick=function(){stmtPeriod=shiftPeriod(stmtPeriod,-1);stmtOpen={};drawStatement();};
+  document.getElementById('stmtNext').onclick=function(){stmtPeriod=shiftPeriod(stmtPeriod,1);stmtOpen={};drawStatement();};
   document.getElementById('csvDownload').onclick=downloadCSV;
   document.getElementById('csvCopy').onclick=copyCSV;
 
