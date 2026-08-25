@@ -647,7 +647,8 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 
 var LS='flatledger:v2', LS_ME='flatledger:me', LS_FB='flatledger:fb', LS_ROOM='flatledger:room',
     LS_OUT='flatledger:outbox', LS_OCR='flatledger:ocr', LS_VAPID='flatledger:vapid',
-    LS_DEV='flatledger:dev', LS_MESET='flatledger:meset', LS_DEVICE='flatledger:device';
+    LS_DEV='flatledger:dev', LS_MESET='flatledger:meset', LS_DEVICE='flatledger:device',
+    LS_TOKEN='flatledger:token';
 var CATS=['Rent','Bills','Groceries','Eating out','Household','Transport','Other'];
 
 var state=null, me=null, db=null, fbRefs=null, online=false, suppress=false, searchTerm='', showVoid=false;
@@ -1001,6 +1002,7 @@ async function connect(){
       try{ localStorage.setItem(LS_OCR,state.ocrUrl); }catch(e){}
       saveLocal(); render();
       drawReadButton();          // a URL arriving from another phone reveals the button
+      resumeNotify();            // the push key may only have arrived just now
     });
     dbMod.onValue(fbRefs.entries,function(snap){
       state.entries=snap.val()||{};
@@ -1829,6 +1831,9 @@ function loadPrefs(){
     var r=localStorage.getItem('flatledger:notifyPrefs');
     if(r)notifyPrefs=Object.assign(notifyPrefs,JSON.parse(r));
   }catch(e){}
+  // The token used to live only in memory, so every reload looked like
+  // notifications had been switched off.
+  try{ fcmToken=localStorage.getItem(LS_TOKEN)||null; }catch(e){}
 }
 function savePrefs(){
   try{ localStorage.setItem('flatledger:notifyPrefs',JSON.stringify(notifyPrefs)); }catch(e){}
@@ -1862,9 +1867,15 @@ function drawNotify(){
     st.textContent='Notifications are blocked for this site. Allow them in your browser settings, then come back.';
     btn.style.display='none'; box.style.display='none'; return;
   }
-  if(Notification.permission!=='granted'||!fcmToken){
+  if(Notification.permission!=='granted'){
     st.textContent='Off on this phone.';
     btn.style.display='inline-block'; box.style.display='none'; return;
+  }
+  if(!fcmToken){
+    // Permission is granted, so this is a token we have not re-acquired yet.
+    st.textContent='Reconnecting notifications\u2026';
+    btn.style.display='inline-block'; box.style.display='none';
+    resumeNotify(); return;
   }
   st.textContent='On for this phone.';
   btn.style.display='none'; box.style.display='block';
@@ -1873,13 +1884,13 @@ function drawNotify(){
   document.getElementById('prefMonthly').className='chip'+(notifyPrefs.monthly?' on':'');
 }
 
-async function enableNotify(){
+async function enableNotify(silent){
   var st=document.getElementById('notifyState');
-  st.textContent='Asking your phone…';
+  if(!silent)st.textContent='Asking your phone…';
   try{
-    var perm=await Notification.requestPermission();
-    if(perm!=='granted'){ drawNotify(); return; }
-    st.textContent='Registering…';
+    var perm = silent ? Notification.permission : await Notification.requestPermission();
+    if(perm!=='granted'){ if(!silent)drawNotify(); return; }
+    if(!silent)st.textContent='Registering…';
 
     var cfg=JSON.parse(localStorage.getItem(LS_FB)||'{}');
     var qs='?apiKey='+encodeURIComponent(cfg.apiKey||'')+
@@ -1899,8 +1910,10 @@ async function enableNotify(){
     var messaging=msgMod.getMessaging(app);
 
     var token=await msgMod.getToken(messaging,{vapidKey:vapidKey(),serviceWorkerRegistration:reg});
-    if(!token){ st.textContent='Your phone refused to issue a token. Try again.'; return; }
-    fcmToken=token; writeToken(token);
+    if(!token){ if(!silent)st.textContent='Your phone refused to issue a token. Try again.'; return; }
+    fcmToken=token;
+    try{ localStorage.setItem(LS_TOKEN,token); }catch(e){}
+    writeToken(token);
 
     // Foreground messages don't raise a notification on their own.
     msgMod.onMessage(messaging,function(payload){
@@ -1910,8 +1923,24 @@ async function enableNotify(){
     });
     drawNotify();
   }catch(err){
-    st.textContent='Could not switch them on: '+(err&&err.message?err.message:'unknown error');
+    if(!silent)st.textContent='Could not switch them on: '+(err&&err.message?err.message:'unknown error');
   }
+}
+/* Tokens expire and browsers rotate them, so once permission is granted we
+   quietly re-register on every launch instead of trusting the stored one.
+   Never prompts: permission has already been given by this point. */
+/* The push key usually arrives from the flat's shared settings a moment AFTER
+   launch, so a single attempt at boot ran too early, gave up, and the phone
+   reported notifications as off until you tapped the button again. This runs
+   once successfully and is safe to call repeatedly. */
+var notifyResumed=false;
+function resumeNotify(){
+  if(notifyResumed)return;
+  if(!notifySupported())return;
+  if(Notification.permission!=='granted')return;
+  if(!vapidKey())return;          // try again when the key turns up
+  notifyResumed=true;
+  enableNotify(true);
 }
 
 /* ---------- reading the receipt ----------
@@ -2619,6 +2648,7 @@ function wire(){
   if(outbox.length)renderSync();
   else status(localStorage.getItem(LS_FB)?'Connecting…':'This phone only — set up sync in Settings');
   await connect();
+  resumeNotify();
   window.addEventListener('online', function(){ flush(); });
   document.addEventListener('visibilitychange', function(){ if(!document.hidden)flush(); });
   window.addEventListener('focus', function(){ flush(); });
