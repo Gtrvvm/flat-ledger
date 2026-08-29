@@ -131,7 +131,7 @@ h1.title{font-size:30px;font-weight:800;letter-spacing:-.03em;margin:4px 0 0;lin
 .scrim.open{display:block}
 .sheet{position:fixed;left:50%;bottom:0;transform:translateX(-50%);width:100%;max-width:560px;max-height:92vh;overflow-y:auto;background:var(--card);border-radius:18px 18px 0 0;z-index:51;padding:18px 16px calc(26px + var(--safe-b));display:none;animation:up .22s cubic-bezier(.2,.7,.3,1)}
 .sheet.open{display:block}
-#sheetTpl,#sheetPreset{z-index:53}   /* opened from Settings, so they must stack above it */
+#sheetTpl,#sheetPreset,#sheetHelp{z-index:53}   /* opened from Settings, so they must stack above it */
 #sheetAsk{z-index:60}                /* always on top of whatever asked */
 #sheetAct{z-index:52}
 @keyframes up{from{transform:translate(-50%,22px);opacity:.4}to{transform:translate(-50%,0);opacity:1}}
@@ -238,6 +238,38 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 .diff-box{background:var(--amber-wash);border:1px solid #EEDDB6;border-radius:9px;padding:11px;margin-top:10px}
 .diff-line{font-size:12px;color:var(--ink-soft);line-height:1.5}
 .diff-line strong{font-family:var(--mono);font-weight:700}
+.tour-dim{position:fixed;inset:0;background:rgba(20,26,31,.55);z-index:70;display:none}
+.tour-dim.on{display:block}
+.tour-lift{position:relative;z-index:71;border-radius:14px;
+  box-shadow:0 0 0 3px var(--blue),0 0 0 9px rgba(31,79,216,.25)}
+.tour-card{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + var(--safe-b));
+  width:calc(100% - 32px);max-width:520px;background:var(--card);border-radius:14px;
+  padding:16px;z-index:72;display:none;box-shadow:0 10px 34px rgba(20,26,31,.34)}
+.tour-card.on{display:block}
+.tour-step{font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--muted)}
+.tour-title{font-size:18px;font-weight:800;letter-spacing:-.02em;margin:5px 0 6px}
+.tour-text{font-size:14px;line-height:1.55;color:var(--ink-soft)}
+.tour-acts{display:flex;gap:8px;align-items:center;margin-top:14px}
+.tour-acts .skip{background:none;border:0;color:var(--muted);font-family:var(--display);
+  font-size:13px;font-weight:600;cursor:pointer;padding:10px 2px}
+.tour-acts .sp{flex:1}
+.tour-acts button.nav{font-family:var(--display);font-size:14px;font-weight:700;padding:11px 16px;
+  border-radius:9px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+.tour-acts button.nav.go{background:var(--ink);border-color:var(--ink);color:#fff}
+.help-sec{border-bottom:1px solid var(--line-soft)}
+.help-sec:last-child{border-bottom:0}
+.help-q{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
+  background:none;border:0;text-align:left;font-family:var(--display);font-size:15px;font-weight:700;
+  color:var(--ink);padding:14px 0;cursor:pointer;letter-spacing:-.01em}
+.help-q .hchev{color:var(--muted);font-size:15px;transition:transform .15s;flex-shrink:0}
+.help-sec.open .hchev{transform:rotate(90deg)}
+.help-a{display:none;padding:0 0 15px;font-size:14px;line-height:1.6;color:var(--ink-soft)}
+.help-sec.open .help-a{display:block}
+.help-a p{margin:0 0 10px}
+.help-a p:last-child{margin-bottom:0}
+.help-a b{color:var(--ink);font-weight:700}
+.help-a .tip{background:var(--paper);border-radius:8px;padding:10px 12px;font-size:13px;margin:10px 0 0}
 .itemtag{font-family:var(--mono);font-size:9px;letter-spacing:.06em;color:var(--muted);margin-left:6px}
 .read-out{border:1px solid var(--line);border-radius:9px;padding:11px;margin-top:9px;display:none}
 .read-out.show{display:block}
@@ -342,7 +374,7 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 
     <div id="alerts"></div>
 
-    <div class="card position">
+    <div class="card position" id="posCard">
       <div class="pos-label" id="posLabel">Your position</div>
       <div class="pos-amount flat" id="posAmount">£0.00</div>
     </div>
@@ -352,7 +384,7 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
       <div id="dueList"></div>
     </div>
 
-    <div class="card">
+    <div class="card" id="beamCard">
       <div class="sec">
         <h2>Where everyone stands</h2>
         <span class="eyebrow" id="hereCount"></span>
@@ -361,12 +393,12 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
       <div class="beam-scale"><span>Owes the flat</span><span>Owed by the flat</span></div>
     </div>
 
-    <div class="card">
+    <div class="card" id="settleCard">
       <div class="sec"><h2>Settle up</h2></div>
       <div id="settle"></div>
     </div>
 
-    <div class="card">
+    <div class="card" id="ledgerCard">
       <div class="sec">
         <h2>The ledger</h2>
         <span style="display:flex;gap:6px">
@@ -406,6 +438,19 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 </div>
 
 <div class="scrim" id="scrim"></div>
+
+<div class="tour-dim" id="tourDim"></div>
+<div class="tour-card" id="tourCard" role="dialog" aria-live="polite">
+  <div class="tour-step" id="tourStep"></div>
+  <div class="tour-title" id="tourTitle"></div>
+  <div class="tour-text" id="tourText"></div>
+  <div class="tour-acts">
+    <button class="skip" id="tourSkip">Skip</button>
+    <span class="sp"></span>
+    <button class="nav" id="tourBack">Back</button>
+    <button class="nav go" id="tourNext">Next</button>
+  </div>
+</div>
 
 <!-- EXPENSE -->
 <div class="sheet" id="sheetExpense" role="dialog" aria-label="Add expense">
@@ -577,6 +622,12 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
   <button class="btn" id="shotDelete" style="width:100%;padding:12px;margin-top:14px">Remove receipt</button>
 </div>
 
+<!-- HELP -->
+<div class="sheet" id="sheetHelp" role="dialog" aria-label="How to use it">
+  <div class="sheet-head"><h3>How to use it</h3><button class="btn small" id="helpClose">Close</button></div>
+  <div id="helpBody"></div>
+</div>
+
 <!-- MONTHLY STATEMENT -->
 <div class="sheet" id="sheetStmt" role="dialog" aria-label="Monthly statement">
   <div class="sheet-head"><h3>Statement</h3><button class="btn small" data-close>Close</button></div>
@@ -604,6 +655,11 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 <!-- SETTINGS -->
 <div class="sheet" id="sheetSettings" role="dialog" aria-label="Settings">
   <div class="sheet-head"><h3>Settings</h3><button class="btn small" data-close>Close</button></div>
+
+  <div style="display:flex;gap:8px;margin-bottom:18px">
+    <button class="btn" id="helpBtn" style="flex:1;padding:12px">How to use it</button>
+    <button class="btn" id="tourBtn" style="flex:1;padding:12px">Show me around</button>
+  </div>
 
   <div class="field"><label class="label" for="flatNameInput">Flat name</label><input class="input" id="flatNameInput" type="text" autocomplete="off"></div>
 
@@ -683,7 +739,7 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 var LS='flatledger:v2', LS_ME='flatledger:me', LS_FB='flatledger:fb', LS_ROOM='flatledger:room',
     LS_OUT='flatledger:outbox', LS_OCR='flatledger:ocr', LS_VAPID='flatledger:vapid',
     LS_DEV='flatledger:dev', LS_MESET='flatledger:meset', LS_DEVICE='flatledger:device',
-    LS_TOKEN='flatledger:token';
+    LS_TOKEN='flatledger:token', LS_TOUR='flatledger:tour';
 var CATS=['Rent','Bills','Groceries','Eating out','Household','Transport','Other'];
 
 var state=null, me=null, db=null, fbRefs=null, online=false, suppress=false, searchTerm='', showVoid=false;
@@ -1339,6 +1395,7 @@ function drawSetup(){
             me=m.id; lockMe();
             try{localStorage.setItem(LS_ME,me);}catch(x){}
             claimPresence(); render();
+            maybeFirstTour();          // straight into the tour for a new phone
           });
     };
     box.appendChild(b);
@@ -1589,7 +1646,7 @@ function askDone(ok){
 }
 function openSheet(id){document.getElementById('scrim').classList.add('open');document.getElementById(id).classList.add('open');}
 function closeSheets(){document.getElementById('scrim').classList.remove('open');
-  ['sheetExpense','sheetPay','sheetSettings','sheetTpl','sheetCsv','sheetAct','sheetPreset','sheetAsk','sheetStmt','sheetShot'].forEach(function(i){document.getElementById(i).classList.remove('open');});}
+  ['sheetExpense','sheetPay','sheetSettings','sheetTpl','sheetCsv','sheetAct','sheetPreset','sheetAsk','sheetStmt','sheetShot','sheetHelp'].forEach(function(i){document.getElementById(i).classList.remove('open');});}
 
 function openExpense(){
   form={cat:'Groceries',paidBy:me,split:{},mode:'equal',custom:{},weights:{},tplId:null,period:null,editingId:null};
@@ -2312,6 +2369,141 @@ function openShot(e){
   });
 }
 
+/* ---------- the guided tour ----------
+   Points at the real screen rather than showing pictures of it: the target is
+   lifted above a dimmed backdrop and scrolled into view. Steps whose target
+   isn't on screen (no bills due yet, say) are skipped automatically. */
+var TOUR=[
+ {t:null, title:'Welcome to the flat ledger',
+  text:'Thirty seconds and you\u2019ll know where everything is. You can leave at any point and start again from Settings.'},
+ {t:'posCard', title:'Where you stand',
+  text:'Blue means the flat owes you. Red means you owe the flat. If you only ever look at one thing, look at this.'},
+ {t:'dueCard', title:'Bills waiting to be logged',
+  text:'Rent and broadband arrive with the amount already filled in \u2014 one tap. Electricity and water ask you to type it, since it changes. Once logged, a bill disappears until it comes round again.'},
+ {t:'beamCard', title:'Everyone else',
+  text:'The same figure for each of you. A blue dot means their app is open right now.'},
+ {t:'settleCard', title:'Clearing up',
+  text:'The fewest transfers that settle everything \u2014 not everyone paying everyone. Tap a row when you\u2019ve actually sent the money.'},
+ {t:'ledgerCard', title:'Everything that\u2019s been logged',
+  text:'Newest first, eight at a time. Search finds anything by description, note, person or amount. <b>Statement</b> breaks a month down by category and person.'},
+ {t:'addBtn', title:'Adding an expense',
+  text:'Amount, what it was, who paid, and who\u2019s in on it. You can photograph the receipt and have it read the total \u2014 or every line, so people only pay for what they had.'},
+ {t:'payBtn', title:'Paying each other back',
+  text:'For when money actually moves. If you say you sent it, the other person confirms it arrived before it counts \u2014 they\u2019re the one who can see it land.'},
+ {t:'settingsBtn', title:'Everything else',
+  text:'Names, recurring bills, saved splits and notifications. <b>How to use it</b> in there answers most questions, and <b>Show me around</b> replays this tour.'},
+ {t:null, title:'That\u2019s it',
+  text:'Log things as they happen and settle up once a month. If a number ever looks wrong, check the Statement for that month \u2014 it\u2019s nearly always a duplicate.'}
+];
+var tourAt=-1, tourLifted=null;
+
+function tourVisible(id){
+  if(!id)return true;
+  var el=document.getElementById(id);
+  return !!(el && el.offsetParent !== null);
+}
+function tourLift(id){
+  if(tourLifted){ tourLifted.classList.remove('tour-lift'); tourLifted=null; }
+  if(!id)return;
+  var el=document.getElementById(id);
+  if(!el)return;
+  el.classList.add('tour-lift'); tourLifted=el;
+  try{ el.scrollIntoView({behavior:'smooth',block:'center'}); }catch(e){ el.scrollIntoView(); }
+}
+function tourShow(){
+  // step over anything not currently on screen
+  while(tourAt<TOUR.length && !tourVisible(TOUR[tourAt].t)) tourAt++;
+  if(tourAt>=TOUR.length){ tourEnd(true); return; }
+  var st=TOUR[tourAt];
+  document.getElementById('tourStep').textContent='Step '+(tourAt+1)+' of '+TOUR.length;
+  document.getElementById('tourTitle').textContent=st.title;
+  document.getElementById('tourText').innerHTML=st.text;
+  document.getElementById('tourBack').style.visibility=tourAt>0?'visible':'hidden';
+  document.getElementById('tourNext').textContent=(tourAt===TOUR.length-1)?'Done':'Next';
+  tourLift(st.t);
+}
+function startTour(){
+  closeSheets();
+  tourAt=0;
+  document.getElementById('tourDim').classList.add('on');
+  document.getElementById('tourCard').classList.add('on');
+  tourShow();
+}
+function tourEnd(finished){
+  tourLift(null);
+  document.getElementById('tourDim').classList.remove('on');
+  document.getElementById('tourCard').classList.remove('on');
+  try{ localStorage.setItem(LS_TOUR,'1'); }catch(e){}
+  if(finished)status('Settings has the tour again whenever you want it');
+  setTimeout(renderSync,3000);
+}
+function maybeFirstTour(){
+  if(!meLocked)return;                      // still choosing who they are
+  var seen=false;
+  try{ seen=localStorage.getItem(LS_TOUR)==='1'; }catch(e){}
+  if(seen)return;
+  setTimeout(startTour,600);                // let the first render settle
+}
+
+/* ---------- in-app manual ----------
+   Written for the flatmates, not the person maintaining this. Kept as data so
+   it stays easy to reword without touching any logic. */
+var HELP=[
+ {q:'What the top of the screen means',
+  a:'<p><b>Your position</b> is the whole point. Blue means the flat owes you. Red means you owe the flat.</p>'+
+    '<p><b>Due now</b> lists bills nobody has logged yet. Fixed ones like rent come with the amount ready \u2014 one tap. Variable ones ask you to type it.</p>'+
+    '<p><b>Settle up</b> works out the fewest transfers that clear everything, rather than everyone paying everyone.</p>'},
+ {q:'Adding an expense',
+  a:'<p>Tap <b>Add expense</b>. Amount, what it was, who paid.</p>'+
+    '<p>Under <b>Split between</b>, untick anyone who wasn\u2019t involved \u2014 a takeaway two of you ordered splits two ways.</p>'+
+    '<p>Then how: <b>Equally</b>, <b>By shares</b> (2 vs 1 means twice as much), <b>By %</b>, or <b>Exact \u00a3</b>.</p>'+
+    '<div class="tip">Shares beat percentages when it\u2019s uneven. If someone drops out of a shop, the rest rebalance on their own instead of you retyping to reach 100.</div>'},
+ {q:'Saved splits',
+  a:'<p>For things that are never even. <b>Food shop</b> is set to 40/20/20/20 \u2014 tap it and the numbers fill in.</p>'+
+    '<p>Make your own in Settings, or from the split box when adding an expense. Everyone gets them.</p>'},
+ {q:'Receipts and splitting them line by line',
+  a:'<p><b>Take photo</b> opens the camera; <b>Choose file</b> takes a screenshot or an emailed bill. Photos are shrunk automatically.</p>'+
+    '<p>Tap <b>Read the receipt</b> and it pulls out the shop, date, total and every item. Then <b>Itemise</b> turns each item into its own line.</p>'+
+    '<p>Tap names on a line to say who had it, or <b>JUST ME</b> for the thing only you ordered. Lines start shared between everyone on the bill, so a normal shop needs no tapping.</p>'+
+    '<p>If the lines don\u2019t match the total \u2014 a discount, a service charge \u2014 the app says so and asks how to share the difference.</p>'+
+    '<div class="tip">Check the figures against the paper before saving. It\u2019s usually right, not always.</div>'},
+ {q:'Paying each other back',
+  a:'<p>Tap <b>Payment</b> when money actually moves.</p>'+
+    '<p><b>I sent money</b> asks the other person to confirm it arrived, and it doesn\u2019t count until they do \u2014 they\u2019re the one who can see it land. <b>I received money</b> counts straight away.</p>'+
+    '<p>Confirmed too quickly? Open it and choose <b>Un-confirm</b>. Logged one by mistake and nobody\u2019s confirmed? <b>Cancel payment</b> removes it completely.</p>'},
+ {q:'Fixing a mistake',
+  a:'<p>Tap any entry in the ledger.</p>'+
+    '<p><b>Edit</b> and <b>Delete</b> are for whoever logged it \u2014 they know what it was. For payments, either of the two people involved. <b>Repeat</b> and <b>View receipt</b> are open to everyone.</p>'+
+    '<p><b>Deleting doesn\u2019t erase.</b> The entry is crossed out, leaves everyone\u2019s balances, and stays visible showing who deleted it and why. <b>Restore</b> brings it back.</p>'},
+ {q:'Seeing where the money went',
+  a:'<p><b>Statement</b>, above the ledger, covers any month: total spent, your share, and where it went by category.</p>'+
+    '<p><b>Tap a name</b> to see what that person actually spent \u2014 their share, not what they fronted. Your quarter of the rent, not the whole standing order.</p>'+
+    '<p><b>Export CSV</b> gives you a spreadsheet. On a phone use <b>Copy to clipboard</b>, since downloads often fail silently there.</p>'},
+ {q:'Notifications',
+  a:'<p>Settings \u2192 Notifications \u2192 <b>Turn on for this phone</b>. Each phone separately.</p>'+
+    '<p>You\u2019ll hear about new expenses, payments waiting on you, and monthly bills. Never your own entries.</p>'+
+    '<div class="tip">Android: if nothing arrives, Settings \u2192 Apps \u2192 Chrome \u2192 Battery \u2192 Unrestricted. Battery saving blocks them silently.</div>'},
+ {q:'Things worth knowing',
+  a:'<p><b>It works underground.</b> Add expenses with no signal and they sync when you\u2019re back. The line at the bottom says if anything is still waiting.</p>'+
+    '<p><b>Everyone sees the same ledger</b>, within a second.</p>'+
+    '<p><b>There\u2019s no login.</b> Anyone with the link and room code can see and edit everything. The rules about who can change what prevent mistakes between people who trust each other \u2014 they don\u2019t keep anyone out.</p>'+
+    '<p>Once a month: log the bills, check Settle up, actually transfer the money, record the payments, export the CSV.</p>'}
+];
+var helpOpen=-1;
+function drawHelp(){
+  var box=document.getElementById('helpBody'); box.innerHTML='';
+  HELP.forEach(function(h,i){
+    var sec=document.createElement('div'); sec.className='help-sec'+(helpOpen===i?' open':'');
+    var q=document.createElement('button'); q.type='button'; q.className='help-q';
+    q.innerHTML='<span>'+esc(h.q)+'</span><span class="hchev">\u203A</span>';
+    q.setAttribute('aria-expanded', helpOpen===i?'true':'false');
+    q.onclick=function(){ helpOpen=(helpOpen===i?-1:i); drawHelp(); };
+    var a=document.createElement('div'); a.className='help-a'; a.innerHTML=h.a;
+    sec.appendChild(q); sec.appendChild(a); box.appendChild(sec);
+  });
+}
+function openHelp(){ helpOpen=-1; drawHelp(); closeSheets(); openSheet('sheetHelp'); }
+
 /* ---------- monthly statement ---------- */
 var stmtPeriod=null, stmtOpen={};
 function monthLabel(p){
@@ -2808,6 +3000,16 @@ function wire(){
     state.members.push({id:uid('m'),name:'New flatmate',active:true}); openSettings(); };
   document.getElementById('addTpl').onclick=function(){openTpl(null);};
   document.getElementById('tplClose').onclick=function(){closeSheets();openSettings();};
+  document.getElementById('helpBtn').onclick=openHelp;
+  document.getElementById('tourBtn').onclick=startTour;
+  document.getElementById('tourSkip').onclick=function(){tourEnd(false);};
+  document.getElementById('tourBack').onclick=function(){ if(tourAt>0){tourAt--; 
+    while(tourAt>0&&!tourVisible(TOUR[tourAt].t))tourAt--; tourShow();} };
+  document.getElementById('tourNext').onclick=function(){
+    if(tourAt>=TOUR.length-1){ tourEnd(true); return; }
+    tourAt++; tourShow();
+  };
+  document.getElementById('helpClose').onclick=function(){closeSheets();openSettings();};
   document.getElementById('addPreset').onclick=function(){openPreset(null);};
   document.getElementById('psClose').onclick=function(){closeSheets();openSettings();};
   document.getElementById('psModePercent').onclick=function(){psForm.mode='percent';psForm.weights={};drawPresetForm();};
@@ -2930,6 +3132,7 @@ function wire(){
   setInterval(function(){ if(!document.hidden)render(); },60000);
 
   if('serviceWorker' in navigator){ try{ navigator.serviceWorker.register('sw.js'); }catch(e){} }
+  maybeFirstTour();
 })();
 })();
 </script>
