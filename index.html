@@ -372,6 +372,12 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
       <div id="setupNames"></div>
     </div>
 
+    <div class="card setup" id="joinCard" style="display:none">
+      <div class="setup-title">Not connected to the flat yet</div>
+      <p class="setup-sub">Anything you log stays on this phone until you join. Ask whoever set the app up for the two things below — it takes a minute, once.</p>
+      <button class="btn primary" id="joinBtn" style="width:100%;padding:13px;font-size:15px">Join the flat</button>
+    </div>
+
     <div id="alerts"></div>
 
     <div class="card position" id="posCard">
@@ -716,6 +722,18 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
   <div id="devSync">
   <div class="divider"></div>
 
+  <div id="joinIntro" style="display:none">
+    <div class="field">
+      <span class="label">Joining the flat — two things to paste</span>
+      <p class="hint" style="margin-top:0">Ask whoever set the app up to send you both. They’re the same for everyone, so they can just forward what they used.</p>
+      <ol class="hint" style="margin:10px 0 0;padding-left:18px;line-height:1.7">
+        <li><b>The connection settings</b> — a block of text starting with <code>{</code> and ending with <code>}</code>. Paste the whole thing, braces included, into the first box.</li>
+        <li><b>The room code</b> — a short line like <code>apartment-109-k4x9</code>. Type it into the second box exactly, including any dashes.</li>
+      </ol>
+      <p class="hint">Then press <b>Save settings</b> at the bottom. The app reloads and you’ll see everyone’s expenses within a second or two. If nothing appears, the room code usually has a typo.</p>
+    </div>
+  </div>
+
   <div class="field"><span class="label">Sync between phones</span>
     <p class="hint" style="margin-top:0">Paste the same Firebase config and room code on all four phones. Leave blank to keep everything on this device only.</p>
     <label class="label" style="margin-top:12px" for="fbConfig">Firebase config</label>
@@ -887,6 +905,14 @@ function presenceOf(memberId){
   });
   return {joined:true,online:online,at:last};
 }
+/* A phone with no sync settings is on its own — nobody else sees anything it
+   logs. Hiding the fields behind developer mode made sense for a working
+   phone and made it impossible to set up a new one, so they show themselves
+   until the flat is joined. */
+function needsSync(){
+  try{ return !(localStorage.getItem(LS_FB)||'').trim() || !(localStorage.getItem(LS_ROOM)||'').trim(); }
+  catch(e){ return true; }
+}
 function loadDev(){
   try{ devMode = localStorage.getItem(LS_DEV)==='1'; }catch(e){ devMode=false; }
   try{ meLocked = localStorage.getItem(LS_MESET)==='1'; }catch(e){ meLocked=false; }
@@ -902,11 +928,16 @@ function setDev(on){
 }
 function drawDev(){
   render();                       // the identity picker appears or disappears with it
-  ['devVapid','devOcr','devSync'].forEach(function(id){
+  var joining=needsSync();
+  ['devVapid','devOcr'].forEach(function(id){
     var el=document.getElementById(id); if(el)el.style.display=devMode?'block':'none';
   });
+  var sync=document.getElementById('devSync');
+  if(sync)sync.style.display=(devMode||joining)?'block':'none';
+  var intro=document.getElementById('joinIntro');
+  if(intro)intro.style.display=joining?'block':'none';
   var note=document.getElementById('devHidden');
-  if(note)note.style.display=devMode?'none':'block';
+  if(note)note.style.display=(devMode||joining)?'none':'block';
 }
 function capDate(id){
   var el=document.getElementById(id); if(!el)return;
@@ -1216,6 +1247,7 @@ function render(){
      the first flatmate's balance under "You are owed" would be a lie. */
   var needsSetup = !meLocked;
   document.getElementById('setupCard').style.display = needsSetup?'block':'none';
+  document.getElementById('joinCard').style.display = (!needsSetup&&needsSync())?'block':'none';
   document.querySelector('.whoami').style.display = needsSetup?'none':'block';
   document.querySelector('.card.position').style.display = needsSetup?'none':'block';
   document.getElementById('alerts').style.display = needsSetup?'none':'block';
@@ -2392,6 +2424,8 @@ var TOUR=[
   text:'For when money actually moves. If you say you sent it, the other person confirms it arrived before it counts \u2014 they\u2019re the one who can see it land.'},
  {t:'settingsBtn', title:'Everything else',
   text:'Names, recurring bills, saved splits and notifications. <b>How to use it</b> in there answers most questions, and <b>Show me around</b> replays this tour.'},
+ {t:'joinCard', title:'One thing left',
+  text:'This phone isn\u2019t connected to the others yet, so nobody else can see what you log. Tap <b>Join the flat</b> and paste the two things you were sent — there are instructions on that screen.'},
  {t:null, title:'That\u2019s it',
   text:'Log things as they happen and settle up once a month. If a number ever looks wrong, check the Statement for that month \u2014 it\u2019s nearly always a duplicate.'}
 ];
@@ -3002,6 +3036,13 @@ function wire(){
   document.getElementById('tplClose').onclick=function(){closeSheets();openSettings();};
   document.getElementById('helpBtn').onclick=openHelp;
   document.getElementById('tourBtn').onclick=startTour;
+  document.getElementById('joinBtn').onclick=function(){
+    openSettings();
+    setTimeout(function(){
+      var el=document.getElementById('joinIntro');
+      if(el&&el.offsetParent!==null){ try{ el.scrollIntoView({behavior:'smooth',block:'start'}); }catch(e){} }
+    },140);
+  };
   document.getElementById('tourSkip').onclick=function(){tourEnd(false);};
   document.getElementById('tourBack').onclick=function(){ if(tourAt>0){tourAt--; 
     while(tourAt>0&&!tourVisible(TOUR[tourAt].t))tourAt--; tourShow();} };
