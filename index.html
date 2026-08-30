@@ -861,15 +861,17 @@ function thisPeriod(){return today().slice(0,7);}
    as already logged, so each frequency needs its own shape: a quarterly bill
    logged in July must still count as done in August. */
 var FREQS=[{id:'weekly',name:'Weekly'},{id:'monthly',name:'Monthly'},
-           {id:'quarterly',name:'Every 3 months'},{id:'yearly',name:'Yearly'}];
+           {id:'quarterly',name:'Every 3 months'},{id:'halfyearly',name:'Every 6 months'},
+           {id:'yearly',name:'Yearly'}];
 function freqName(f){
   for(var i=0;i<FREQS.length;i++)if(FREQS[i].id===(f||'monthly'))return FREQS[i].name;
   return 'Monthly';
 }
 function periodFor(freq,dateStr){
   var d=dateStr||today(), y=d.slice(0,4), m=+d.slice(5,7);
-  if(freq==='yearly')   return y;
-  if(freq==='quarterly')return y+'-Q'+Math.ceil(m/3);
+  if(freq==='yearly')    return y;
+  if(freq==='halfyearly')return y+'-H'+Math.ceil(m/6);
+  if(freq==='quarterly') return y+'-Q'+Math.ceil(m/3);
   if(freq==='weekly'){
     var dt=new Date(d+'T12:00:00');
     dt.setDate(dt.getDate()-((dt.getDay()+6)%7));       // back to Monday
@@ -905,6 +907,7 @@ function dueStatus(t){
 }
 function periodLabel(freq){
   if(freq==='yearly')return 'this year';
+  if(freq==='halfyearly')return 'this half-year';
   if(freq==='quarterly')return 'this quarter';
   if(freq==='weekly')return 'this week';
   return 'this month';
@@ -1135,6 +1138,28 @@ function findDuplicate(amount,date,ignoreId){
   });
   return hit.length?hit[0]:null;
 }
+/* Two people logging the same transfer from opposite ends — one taps
+   "I received", the other taps "I sent" — produced two payments for one
+   movement of money and quietly doubled it. Anything between the same pair
+   for the same amount within a week is worth a question. */
+function payRecipient(e){
+  var k=Object.keys(e.shares||{});
+  return k.length?k[0]:null;
+}
+function daysBetween(a,b){
+  return Math.abs(Math.round((new Date(a+'T12:00:00')-new Date(b+'T12:00:00'))/86400000));
+}
+function findMatchingPayment(from,to,amount,ignoreId,date){
+  var when=date||today();
+  var hits=entryList().filter(function(e){
+    if(e.type!=='payment'||e.voided||e.id===ignoreId)return false;
+    if(e.status==='declined')return false;
+    if(e.amount!==amount)return false;
+    if(e.paidBy!==from||payRecipient(e)!==to)return false;
+    return daysBetween(e.date,when)<=7;
+  });
+  return hits.length?hits[0]:null;
+}
 // A payment only moves money once the person who received it says it arrived.
 function countsInBalance(e){
   if(e.voided)return false;
@@ -1177,10 +1202,26 @@ function canEdit(e){
   if(e.type==='payment') return e.paidBy===me || !!(e.shares&&e.shares[me]);
   return ownerOf(e)===me;
 }
-function confirmPayment(id){
+function doConfirm(id){
   var e=state.entries[id]; if(!e)return;
   e.status='confirmed'; e.confirmedBy=me; e.confirmedAt=Date.now();
   pushEntry(e);
+}
+function confirmPayment(id){
+  var e=state.entries[id]; if(!e)return;
+  // The other person may already have logged the same transfer themselves.
+  var clash=findMatchingPayment(e.paidBy,payRecipient(e),e.amount,e.id,e.date);
+  if(clash&&clash.status!=='pending'){
+    ask({title:'This looks like a duplicate',
+         message:money(e.amount)+' from '+memberById(e.paidBy).name+
+                 ' is already counted \u2014 logged on '+prettyDate(clash.date).toLowerCase()+
+                 ' by '+memberById(clash.addedBy||clash.paidBy).name+
+                 '. Confirming this one as well would count the money twice.',
+         okLabel:'Confirm anyway', cancelLabel:'Leave it', danger:true},
+        function(v,ok){ if(ok)doConfirm(id); });
+    return;
+  }
+  doConfirm(id);
 }
 // Putting a confirmation back to pending, rather than deleting the payment,
 // so the trail reads "un-confirmed" instead of "deleted".
@@ -3187,10 +3228,24 @@ function wire(){
     var sh={}; sh[to]=amt;
     // If you received it, you're already confirming. If you sent it, they must.
     var status = payDir==='sent' ? 'pending' : 'confirmed';
+    var payDate=document.getElementById('payDate').value||today();
     var e={id:uid('p'),type:'payment',desc:memberById(from).name+' → '+memberById(to).name,
       category:'Payment',amount:amt,paidBy:from,shares:sh,addedBy:me,status:status,
-      date:document.getElementById('payDate').value||today(),createdAt:Date.now()};
+      date:payDate,createdAt:Date.now()};
     if(status==='confirmed'){e.confirmedBy=me;e.confirmedAt=Date.now();}
+
+    var clash=findMatchingPayment(from,to,amt,null,payDate);
+    if(clash){
+      ask({title:'Already recorded?',
+           message:money(clash.amount)+' from '+memberById(from).name+' to '+memberById(to).name+
+                   ' was logged on '+prettyDate(clash.date).toLowerCase()+' by '+
+                   memberById(clash.addedBy||clash.paidBy).name+
+                   (clash.status==='pending'?' and is waiting to be confirmed':'')+
+                   '. Logging it again would count the money twice.',
+           okLabel:'Log it anyway', cancelLabel:'Don\u2019t', danger:true},
+          function(v,ok){ if(ok){ closeSheets(); pushEntry(e); } });
+      return;
+    }
     closeSheets(); pushEntry(e);
   };
 
