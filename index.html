@@ -1030,11 +1030,20 @@ function scheduleFlush(){
   if(flushTimer||!outbox.length)return;
   flushTimer=setTimeout(function(){ flushTimer=null; flush(); },15000);
 }
+var lastConnectError='';
 function renderSync(){
   var n=outbox.length;
+  /* A queued change used to report "waiting to sync" even when the app had
+     never connected, which reads as a delay rather than a dead end. */
+  if(n&&!fbRefs){
+    status(lastConnectError||(needsSync()?'Saved here only — join the flat in Settings'
+                                         :'Not connected — check the settings in Settings'));
+    return;
+  }
   if(n)      status(n+' change'+(n===1?'':'s')+' waiting to sync');
   else if(online) status('Synced');
-  else       status('This phone only — set up sync in Settings');
+  else if(needsSync()) status('This phone only — join the flat in Settings');
+  else       status(lastConnectError||'Not connected — check the settings in Settings');
 }
 
 function pushMeta(){
@@ -1194,7 +1203,20 @@ async function connect(){
     flush();                       // anything queued from an earlier session goes now
     // seed if the room is empty
     setTimeout(function(){ if(!Object.keys(state.entries).length) pushMeta(); },1200);
-  }catch(e){ status('Could not reach sync — running on this phone'); }
+  }catch(e){
+    // Say which part failed; "could not reach sync" sent us hunting in the wrong place before.
+    var m=(e&&e.message)||'';
+    if(/databaseURL|database URL|Can't determine Firebase Database URL/i.test(m))
+      lastConnectError='Config is missing databaseURL — add it in Settings';
+    else if(/api-key|api key|invalid-api-key/i.test(m))
+      lastConnectError='Firebase rejected the API key';
+    else if(/app\/duplicate-app/i.test(m))
+      lastConnectError='Reload the page to apply the new settings';
+    else
+      lastConnectError='Could not connect: '+(m.slice(0,60)||'unknown error');
+    console.error('[flat-ledger] sync failed:', e);
+    renderSync();
+  }
 }
 
 function status(t){
