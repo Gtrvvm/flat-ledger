@@ -488,6 +488,7 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
       <button class="chip" id="modeShares" type="button">By shares</button>
       <button class="chip" id="modePercent" type="button">By %</button>
       <button class="chip" id="modeCustom" type="button">Exact £</button>
+      <button class="chip" id="modeItems" type="button">Item by item</button>
     </div>
   </div>
   <div class="field" id="customBox" style="display:none">
@@ -524,6 +525,7 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
   </div>
   <div class="field" id="itemsBox" style="display:none">
     <span class="label">Items — who had what</span>
+    <p class="hint" style="margin:0 0 10px" id="itemsHint">Add a line for each thing, then tap names to say who had it.</p>
     <div id="itemRows"></div>
     <div class="item-foot">
       <span class="k">Items add up to</span><span class="v" id="itemsSum">£0.00</span>
@@ -565,6 +567,11 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
   <div class="field"><label class="label" for="tplName">Name</label><input class="input" id="tplName" type="text" placeholder="e.g. Electricity" autocomplete="off"></div>
   <div class="field"><span class="label">Category</span><div class="chips" id="tplCats"></div></div>
   <div class="field"><span class="label">How often</span><div class="chips" id="tplFreq"></div></div>
+  <div class="field" id="tplDayBox">
+    <label class="label" id="tplDayLabel" for="tplDay">Day it lands</label>
+    <select class="select" id="tplDay"></select>
+    <p class="hint" id="tplDayHint"></p>
+  </div>
   <div class="field"><span class="label">Amount</span>
     <div class="chips" style="margin-bottom:8px">
       <button class="chip" id="tplFixed" type="button">Same every month</button>
@@ -870,6 +877,31 @@ function periodFor(freq,dateStr){
            '-'+String(dt.getDate()).padStart(2,'0');
   }
   return d.slice(0,7);                                   // monthly, and the old default
+}
+var WEEKDAYS=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+/* An optional day the bill lands. Only meaningful for weekly and monthly —
+   a quarterly bill's date moves around, so it isn't offered there. */
+function dueDateFor(t){
+  var day=t.day; if(!day)return null;
+  var f=t.freq||'monthly', n=new Date(today()+'T12:00:00');
+  if(f==='weekly'){
+    var d=new Date(n); d.setDate(d.getDate()-((d.getDay()+6)%7)+(day-1));   // Monday + offset
+    return d;
+  }
+  if(f==='monthly'){
+    var last=new Date(n.getFullYear(),n.getMonth()+1,0).getDate();
+    return new Date(n.getFullYear(),n.getMonth(),Math.min(day,last),12,0,0); // clamp 31 Feb
+  }
+  return null;
+}
+function dueStatus(t){
+  var d=dueDateFor(t); if(!d)return null;
+  var n=new Date(today()+'T12:00:00');
+  var days=Math.round((d-n)/86400000);
+  if(days<0) return {days:days, text:'overdue by '+Math.abs(days)+(Math.abs(days)===1?' day':' days'), late:true};
+  if(days===0)return {days:0, text:'due today', late:false};
+  if(days===1)return {days:1, text:'due tomorrow', late:false};
+  return {days:days, text:'due in '+days+' days', late:false};
 }
 function periodLabel(freq){
   if(freq==='yearly')return 'this year';
@@ -1318,6 +1350,14 @@ function render(){
   var due=state.templates.filter(function(t){
     return !logged[t.id+'|'+periodFor(t.freq||'monthly')];
   });
+  // soonest first, and anything overdue at the very top
+  due.sort(function(a,b){
+    var da=dueStatus(a), db=dueStatus(b);
+    if(!da&&!db)return 0;
+    if(!da)return 1;
+    if(!db)return -1;
+    return da.days-db.days;
+  });
   var dueCard=document.getElementById('dueCard'), dueList=document.getElementById('dueList');
   dueCard.style.display=due.length?'block':'none';
   dueList.innerHTML='';
@@ -1326,7 +1366,11 @@ function render(){
     row.innerHTML='<div class="due-body"><div class="due-name">'+esc(t.name)+'</div>'+
       '<div class="due-sub">'+esc(memberById(t.payer).name)+' pays · '+
       (t.kind==='fixed'&&t.amount?money(t.amount):'amount varies')+
-      ((t.freq&&t.freq!=='monthly')?' · '+esc(freqName(t.freq).toLowerCase()):'')+'</div></div>';
+      ((t.freq&&t.freq!=='monthly')?' · '+esc(freqName(t.freq).toLowerCase()):'')+
+      (function(){var st=dueStatus(t);
+        return st?' · <span style="color:'+(st.late?'var(--red)':'var(--muted)')+
+          (st.late?';font-weight:700':'')+'">'+esc(st.text)+'</span>':'';})()+
+      '</div></div>';
     var btn=document.createElement('button'); btn.className='btn small';
     btn.textContent=(t.kind==='fixed'&&t.amount)?'Add':'Enter amount';
     btn.onclick=function(){ openExpenseFromTemplate(t); };
@@ -1840,6 +1884,7 @@ function drawExpenseChips(){
   document.getElementById('modeCustom').className='chip'+(form.mode==='custom'?' on':'');
   document.getElementById('modeShares').className='chip pct'+(form.mode==='shares'?' on':'');
   document.getElementById('modePercent').className='chip pct'+(form.mode==='percent'?' on':'');
+  document.getElementById('modeItems').className='chip pct'+(form.mode==='items'?' on':'');
 }
 function openExpenseAgain(){   // ask() closes every sheet, so bring the expense form back
   drawExpenseChips(); drawSplitDetail(); openSheet('sheetExpense');
@@ -2775,15 +2820,43 @@ function openTpl(t){
   drawTplChips(); openSheet('sheetTpl');
   setTimeout(function(){var n=document.getElementById('tplName'); if(!t)n.focus();},90);
 }
+function drawTplDay(){
+  var freq=tplForm.freq||'monthly';
+  var box=document.getElementById('tplDayBox'), sel=document.getElementById('tplDay');
+  // A quarterly or yearly bill doesn't land on a predictable day, so don't pretend.
+  if(freq!=='weekly'&&freq!=='monthly'){ box.style.display='none'; tplForm.day=null; return; }
+  box.style.display='block';
+  document.getElementById('tplDayLabel').textContent=freq==='weekly'?'Day of the week':'Day of the month';
+  document.getElementById('tplDayHint').textContent=freq==='weekly'
+    ? 'Optional. Used to say how soon it\u2019s due.'
+    : 'Optional. Months without that date use the last day instead.';
+  sel.innerHTML='';
+  var none=document.createElement('option'); none.value=''; none.textContent='No set day';
+  sel.appendChild(none);
+  if(freq==='weekly'){
+    WEEKDAYS.forEach(function(n,i){
+      var o=document.createElement('option'); o.value=String(i+1); o.textContent=n; sel.appendChild(o);
+    });
+  } else {
+    for(var d=1;d<=31;d++){
+      var o=document.createElement('option'); o.value=String(d);
+      o.textContent=d+(d%10===1&&d!==11?'st':d%10===2&&d!==12?'nd':d%10===3&&d!==13?'rd':'th');
+      sel.appendChild(o);
+    }
+  }
+  sel.value=tplForm.day?String(tplForm.day):'';
+  sel.onchange=function(){ tplForm.day=sel.value?parseInt(sel.value,10):null; };
+}
 function drawTplChips(){
   var f=document.getElementById('tplFreq'); f.innerHTML='';
   FREQS.forEach(function(x){
     var b=document.createElement('button'); b.type='button';
     b.className='chip'+((tplForm.freq||'monthly')===x.id?' on':'');
     b.textContent=x.name;
-    b.onclick=function(){tplForm.freq=x.id;drawTplChips();};
+    b.onclick=function(){tplForm.freq=x.id;tplForm.day=null;drawTplChips();};
     f.appendChild(b);
   });
+  drawTplDay();
   var c=document.getElementById('tplCats'); c.innerHTML='';
   CATS.forEach(function(x){var b=document.createElement('button');b.type='button';
     b.className='chip'+(tplForm.category===x?' on':'');b.textContent=x;
@@ -2806,7 +2879,10 @@ function drawSettingsTemplates(){
   state.templates.forEach(function(t){
     var row=document.createElement('div'); row.className='tpl-row';
     row.innerHTML='<div class="tpl-body"><div class="tpl-name">'+esc(t.name||'Untitled')+'</div>'+
-      '<div class="tpl-sub">'+esc(freqName(t.freq))+' · '+esc(memberById(t.payer).name)+' · '+
+      '<div class="tpl-sub">'+esc(freqName(t.freq))+
+      (t.day?' · '+esc((t.freq==='weekly')?WEEKDAYS[t.day-1]:('the '+t.day+
+        (t.day%10===1&&t.day!==11?'st':t.day%10===2&&t.day!==12?'nd':t.day%10===3&&t.day!==13?'rd':'th'))):'')+
+      ' · '+esc(memberById(t.payer).name)+' · '+
       (t.kind==='fixed'?money(t.amount||0)+' fixed':'varies')+' · split '+
       Object.keys(t.split||{}).filter(function(k){return t.split[k];}).length+'</div></div>';
     var b=document.createElement('button'); b.className='btn small'; b.textContent='Edit';
@@ -2965,6 +3041,16 @@ function wire(){
   document.getElementById('modeCustom').onclick=function(){form.mode='custom';drawExpenseChips();drawSplitDetail();};
   document.getElementById('modeShares').onclick=function(){form.mode='shares';form.weights={};drawExpenseChips();drawSplitDetail();};
   document.getElementById('modePercent').onclick=function(){form.mode='percent';form.weights={};drawExpenseChips();drawSplitDetail();};
+  document.getElementById('modeItems').onclick=function(){
+    form.mode='items';
+    // Reading a receipt fills these in; started by hand you get one blank line.
+    if(!form.items||!form.items.length){
+      var sp={}; itemMembers().forEach(function(id){sp[id]=true;});
+      form.items=[{name:'',amount:0,split:sp}];
+      form.adjustMode='proportional';
+    }
+    drawExpenseChips(); drawSplitDetail();
+  };
   document.getElementById('amount').oninput=function(){
     if(form.mode==='custom')checkRemainder();
     if(form.mode==='percent'||form.mode==='shares')refreshRatio();
@@ -3019,9 +3105,13 @@ function wire(){
       err.textContent='That date is in the future — pick today or earlier.';return;}
     var shares, weights=null;
     if(form.mode==='items'&&form.items&&form.items.length){
+      // an untouched blank line is just an unused row, not an error
+      form.items=form.items.filter(function(it){ return it.amount>0 || (it.name||'').trim(); });
+      if(!form.items.length){
+        err.textContent='Add at least one line, or pick a different way to split.';return;}
       for(var q=0;q<form.items.length;q++){
         if(!(form.items[q].amount>0)){
-          err.textContent='Every line needs a price above zero. Remove any you don\u2019t want.';return;}
+          err.textContent='\u201C'+(form.items[q].name||'One of the lines')+'\u201D needs a price.';return;}
       }
       shares=itemShares(form.items,ids,amt,form.adjustMode||'proportional').shares;
     } else if(form.mode==='custom'){
