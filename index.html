@@ -421,10 +421,6 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
         <div><div class="k">This month</div><div class="v" id="monthTotal">£0.00</div></div>
         <div><div class="k">Your share</div><div class="v" id="monthShare">£0.00</div></div>
       </div>
-      <div class="searchbar">
-        <input id="search" type="search" placeholder="Search expenses, notes, people…" autocomplete="off">
-        <button class="searchclear" id="searchClear" aria-label="Clear search">✕</button>
-      </div>
       <div id="entries"></div>
     </div>
 
@@ -3143,9 +3139,14 @@ function wire(){
       var m=memberById(inp.dataset.mid), v=inp.value.trim(); if(v)m.name=v; });
     state.flatName=document.getElementById('flatNameInput').value.trim()||'Our flat';
 
-    // Hidden fields are left completely alone, so a flatmate saving Settings
-    // can never blank the shared sync or reader configuration.
+    /* A field that is on screen must be saved. The sync boxes appear on an
+       unconnected phone without developer mode, and reading them only in
+       developer mode meant a new device could type its settings, press Save,
+       and have them silently thrown away. Push key and reader stay dev-only
+       because they are never shown otherwise. */
+    var joining=needsSync();
     var cfg=null, room=null, oldCfg=localStorage.getItem(LS_FB)||'', oldRoom=localStorage.getItem(LS_ROOM)||'';
+
     if(devMode){
       var vap=document.getElementById('vapidKey').value.trim();
       state.vapid=vap;
@@ -3156,14 +3157,27 @@ function wire(){
         document.getElementById('setErr').textContent='The reader address must start with https://';return;}
       state.ocrUrl=ocr;                       // goes out with the rest of the flat settings
       try{ localStorage.setItem(LS_OCR,ocr); }catch(e){}   // so it still works before sync
+    }
 
+    if(devMode||joining){
       cfg=document.getElementById('fbConfig').value.trim();
       room=document.getElementById('roomCode').value.trim();
-      if(cfg){ try{JSON.parse(cfg);}catch(e){document.getElementById('setErr').textContent='Firebase config is not valid JSON.';return;} }
+      if(cfg){
+        var parsed;
+        try{ parsed=JSON.parse(cfg); }
+        catch(e){ document.getElementById('setErr').textContent=
+          'Those connection settings aren\u2019t valid. Paste the whole block including the { and }.'; return; }
+        if(!parsed.databaseURL){
+          document.getElementById('setErr').textContent=
+            'The settings are missing databaseURL — ask for the line starting https:// and ending firebasedatabase.app'; return; }
+        if(!room){
+          document.getElementById('setErr').textContent='Enter the room code as well, or nothing will sync.'; return; }
+      }
       try{ localStorage.setItem(LS_FB,cfg); localStorage.setItem(LS_ROOM,room); }catch(e){}
     }
+
     pushMeta(); render(); closeSheets();
-    if(devMode && (cfg!==oldCfg||room!==oldRoom)) location.reload();
+    if((devMode||joining) && (cfg!==oldCfg||room!==oldRoom)) location.reload();
   };
 }
 
