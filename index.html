@@ -1042,8 +1042,17 @@ function renderSync(){
   else       status(lastConnectError||'Not connected — check the settings in Settings');
 }
 
+/* A device that has just joined still holds default names, default bills and
+   an empty reader URL. Sending that before the real settings have arrived
+   overwrites the flat's for everyone — which is exactly what happened. Nothing
+   goes out until we've heard what's already there. */
+var metaLoaded=false;
 function pushMeta(){
   saveLocal();
+  if(fbRefs&&!metaLoaded){
+    console.warn('[flat-ledger] not sending settings yet — still waiting for the flat\u2019s own');
+    return;
+  }
   enqueue({kind:'meta',payload:{flatName:state.flatName,members:state.members,
     templates:state.templates,presets:state.presets,ocrUrl:state.ocrUrl||'',vapid:state.vapid||''}});
 }
@@ -1176,7 +1185,9 @@ async function connect(){
       render();
     });
     dbMod.onValue(fbRefs.meta,function(snap){
-      var v=snap.val(); if(!v)return;
+      var v=snap.val();
+      metaLoaded=true;                 // even an empty room counts as "we've looked"
+      if(!v)return;
       state.flatName=v.flatName||state.flatName;
       if(Array.isArray(v.members)&&v.members.length)state.members=v.members;
       state.templates=Array.isArray(v.templates)?v.templates:[];
@@ -3176,8 +3187,12 @@ function wire(){
       try{ localStorage.setItem(LS_FB,cfg); localStorage.setItem(LS_ROOM,room); }catch(e){}
     }
 
-    pushMeta(); render(); closeSheets();
-    if((devMode||joining) && (cfg!==oldCfg||room!==oldRoom)) location.reload();
+    var reconnecting = (devMode||joining) && (cfg!==oldCfg||room!==oldRoom);
+    // Reconnecting means a reload is coming and the real settings will arrive
+    // with it. Pushing this device's defaults first would clobber them.
+    if(!reconnecting) pushMeta();
+    render(); closeSheets();
+    if(reconnecting) location.reload();
   };
 }
 
