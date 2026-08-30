@@ -279,7 +279,18 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 .read-warn{font-size:12px;color:var(--amber);margin-top:6px;line-height:1.4}
 .clip{font-size:11px;color:var(--muted);margin-left:5px}
 .shot{display:flex;align-items:center;gap:10px}
-.shot-thumb{width:54px;height:54px;border-radius:8px;object-fit:cover;border:1px solid var(--line);flex-shrink:0;background:var(--paper)}
+.shot-thumb{width:54px;height:54px;border-radius:8px;object-fit:cover;border:1px solid var(--line);
+  flex-shrink:0;background:var(--paper);cursor:zoom-in;transition:box-shadow .12s}
+.shot-thumb:active{box-shadow:0 0 0 3px var(--blue-wash)}
+.peek{position:fixed;inset:0;background:rgba(20,26,31,.92);z-index:80;display:none;
+  align-items:center;justify-content:center;padding:16px;cursor:zoom-out}
+.peek.on{display:flex}
+.peek img{max-width:100%;max-height:88vh;border-radius:10px;object-fit:contain}
+.peek-close{position:absolute;top:calc(12px + env(safe-area-inset-top));right:14px;
+  background:rgba(255,255,255,.14);border:0;color:#fff;font-family:var(--display);font-size:13px;
+  font-weight:600;padding:9px 14px;border-radius:999px;cursor:pointer}
+.peek-hint{position:absolute;bottom:calc(16px + var(--safe-b));left:0;right:0;text-align:center;
+  font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.5)}
 .shot-btns{display:flex;gap:6px;flex-wrap:wrap;flex:1}
 .shot-note{font-size:11px;color:var(--muted);margin-top:6px}
 .shot-note.bad{color:var(--red)}
@@ -440,6 +451,12 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 </div>
 
 <div class="scrim" id="scrim"></div>
+
+<div class="peek" id="peek" role="dialog" aria-label="Receipt, full size">
+  <button class="peek-close" id="peekClose">Close</button>
+  <img id="peekImg" alt="Receipt at full size">
+  <div class="peek-hint">Tap anywhere to close</div>
+</div>
 
 <div class="tour-dim" id="tourDim"></div>
 <div class="tour-card" id="tourCard" role="dialog" aria-live="polite">
@@ -2122,12 +2139,27 @@ function drawShot(){
       note=document.getElementById('shotNote');
   if(form.photo){
     t.src=form.photo; t.style.display='block'; drop.style.display='inline-block';
+    t.title='Tap to see it full size';
+    t.setAttribute('role','button'); t.tabIndex=0;
+    t.setAttribute('aria-label','Show the receipt full size');
     note.className='shot-note';
     note.textContent='About '+Math.round(form.photo.length/1024)+'KB after compressing.';
   } else {
     t.style.display='none'; drop.style.display='none';
   }
   drawReadButton();
+}
+/* The thumbnail is 54px, which is no use for checking the reader got the total
+   right. Tapping it shows the photo as large as the screen allows. Sits above
+   every sheet so it works from inside the expense form. */
+function openPeek(src){
+  if(!src)return;
+  document.getElementById('peekImg').src=src;
+  document.getElementById('peek').classList.add('on');
+}
+function closePeek(){
+  document.getElementById('peek').classList.remove('on');
+  document.getElementById('peekImg').removeAttribute('src');
 }
 function resetShot(){
   form.photo=null; form.photoChanged=false;
@@ -2870,6 +2902,19 @@ function wire(){
   document.getElementById('prefPayment').onclick=function(){notifyPrefs.payment=!notifyPrefs.payment;savePrefs();drawNotify();};
   document.getElementById('prefMonthly').onclick=function(){notifyPrefs.monthly=!notifyPrefs.monthly;savePrefs();drawNotify();};
   document.getElementById('readBtn').onclick=readReceipt;
+  var thumb=document.getElementById('shotThumb');
+  thumb.onclick=function(){ openPeek(form.photo); };
+  thumb.onkeydown=function(ev){ if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();openPeek(form.photo);} };
+  document.getElementById('peek').onclick=closePeek;
+  document.getElementById('peekClose').onclick=function(ev){ ev.stopPropagation(); closePeek(); };
+  document.addEventListener('keydown',function(ev){
+    if(ev.key==='Escape'&&document.getElementById('peek').classList.contains('on'))closePeek();
+  });
+
+  // the saved-receipt viewer can enlarge too
+  var big=document.getElementById('shotBig');
+  if(big){ big.style.cursor='zoom-in'; big.onclick=function(){ openPeek(big.src); }; }
+
   document.getElementById('shotTake').onclick=function(){document.getElementById('shotCam').click();};
   document.getElementById('shotPick').onclick=function(){document.getElementById('shotFile').click();};
   document.getElementById('shotCam').onchange=function(ev){attachShot(ev.target.files[0]);ev.target.value='';};
