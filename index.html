@@ -270,6 +270,15 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 .help-a p:last-child{margin-bottom:0}
 .help-a b{color:var(--ink);font-weight:700}
 .help-a .tip{background:var(--paper);border-radius:8px;padding:10px 12px;font-size:13px;margin:10px 0 0}
+.bk-line{display:flex;align-items:baseline;gap:10px;padding:9px 0;border-bottom:1px dashed var(--line-soft)}
+.bk-line:last-of-type{border-bottom:0}
+.bk-name{flex:1;font-size:14px;font-weight:600;min-width:0}
+.bk-who{font-size:12px;color:var(--muted);margin-top:2px;line-height:1.4}
+.bk-amt{font-family:var(--mono);font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;flex-shrink:0}
+.bk-sum{display:flex;justify-content:space-between;padding:9px 0;font-size:13px}
+.bk-sum .v{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.bk-sum.tot{border-top:1px solid var(--line);margin-top:6px;padding-top:11px;font-weight:700}
+.bk-adj{color:var(--amber)}
 .itemtag{font-family:var(--mono);font-size:9px;letter-spacing:.06em;color:var(--muted);margin-left:6px}
 .read-out{border:1px solid var(--line);border-radius:9px;padding:11px;margin-top:9px;display:none}
 .read-out.show{display:block}
@@ -652,6 +661,12 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 <div class="sheet" id="sheetHelp" role="dialog" aria-label="How to use it">
   <div class="sheet-head"><h3>How to use it</h3><button class="btn small" id="helpClose">Close</button></div>
   <div id="helpBody"></div>
+</div>
+
+<!-- ITEM BREAKDOWN (read-only) -->
+<div class="sheet" id="sheetBreak" role="dialog" aria-label="What was on this bill">
+  <div class="sheet-head"><h3>What was on this bill</h3><button class="btn small" data-close>Close</button></div>
+  <div id="breakBody"></div>
 </div>
 
 <!-- MONTHLY STATEMENT -->
@@ -1701,6 +1716,35 @@ function openActions(e){
   document.getElementById('actAmt').textContent=money(e.amount);
 
   var box=document.getElementById('actButtons'); box.innerHTML='';
+
+  // Anyone can see how an itemised bill was divided, whether or not they can edit it.
+  if(e.items&&e.items.length){
+    var det=document.createElement('div'); det.className='per-detail';
+    det.style.marginBottom='14px'; det.style.borderBottom='1px solid var(--line-soft)';
+    var hd=document.createElement('div'); hd.className='stmt-sec'; hd.style.margin='0 0 8px';
+    hd.textContent=e.items.length+' items';
+    det.appendChild(hd);
+    e.items.forEach(function(it){
+      var who=(it.split||[]).map(function(id){return memberById(id).name;});
+      var r=document.createElement('div'); r.className='pd-row';
+      r.innerHTML='<span class="pd-name">'+esc(it.name||'Item')+
+        '<span style="display:block;font-size:11px;color:var(--muted);margin-top:1px">'+
+        esc(who.length?who.join(', '):'everyone')+'</span></span>'+
+        '<span class="pd-amt">'+money(it.amount)+'</span>';
+      det.appendChild(r);
+    });
+    var sum=e.items.reduce(function(a,it){return a+it.amount;},0);
+    if(sum!==e.amount){
+      var d=document.createElement('div'); d.className='pd-row';
+      d.innerHTML='<span class="pd-name" style="color:var(--amber)">'+
+        (sum>e.amount?'Discount':'Extra')+', shared '+
+        esc(e.adjustMode==='equal'?'evenly':'in proportion')+
+        '</span><span class="pd-amt" style="color:var(--amber)">'+
+        (sum>e.amount?'\u2212':'+')+money(Math.abs(e.amount-sum))+'</span>';
+      det.appendChild(d);
+    }
+    box.appendChild(det);
+  }
   function btn(label,sub,cls,fn){
     var b=document.createElement('button'); b.className='act-btn'+(cls?' '+cls:'');
     b.innerHTML=esc(label)+'<span class="sub">'+esc(sub)+'</span>';
@@ -1729,6 +1773,9 @@ function openActions(e){
           function(why,ok){ if(ok)declinePayment(e.id,why); });
     });
   } else {
+    if(!isPay&&e.items&&e.items.length){
+      btn('See the items','Who was charged for what','',function(){openBreakdown(e);});
+    }
     if(!isPay&&e.hasPhoto){
       btn('View receipt','Opens the photo','',function(){openShot(e);});
     }
@@ -1809,10 +1856,11 @@ function askDone(ok){
 }
 function openSheet(id){document.getElementById('scrim').classList.add('open');document.getElementById(id).classList.add('open');}
 function closeSheets(){document.getElementById('scrim').classList.remove('open');
-  ['sheetExpense','sheetPay','sheetSettings','sheetTpl','sheetCsv','sheetAct','sheetPreset','sheetAsk','sheetStmt','sheetShot','sheetHelp'].forEach(function(i){document.getElementById(i).classList.remove('open');});}
+  ['sheetExpense','sheetPay','sheetSettings','sheetTpl','sheetCsv','sheetAct','sheetPreset','sheetAsk','sheetStmt','sheetShot','sheetHelp','sheetBreak'].forEach(function(i){document.getElementById(i).classList.remove('open');});}
 
 function openExpense(){
-  form={cat:'Groceries',paidBy:me,split:{},mode:'equal',custom:{},weights:{},tplId:null,period:null,editingId:null};
+  form={cat:'Groceries',paidBy:me,split:{},mode:'equal',custom:{},weights:{},
+        items:null,adjustMode:null,tplId:null,period:null,editingId:null};
   activeMembers().forEach(function(m){form.split[m.id]=true;});
   document.getElementById('expTitle').textContent='Add expense';
   document.getElementById('amount').value='';
@@ -1828,20 +1876,13 @@ function openExpense(){
 }
 function editEntry(e){
   form={cat:e.category||'Other',paidBy:e.paidBy,split:{},mode:e.splitMode||'equal',custom:{},weights:{},
-        tplId:e.templateId||null,period:e.period||null,editingId:e.id,createdAt:e.createdAt};
+        items:null,adjustMode:null,tplId:e.templateId||null,period:e.period||null,
+        editingId:e.id,createdAt:e.createdAt};
   Object.keys(e.shares||{}).forEach(function(id){
     form.split[id]=true;
     form.custom[id]=plain(e.shares[id]);
   });
   if(e.weights)Object.keys(e.weights).forEach(function(id){form.weights[id]=String(e.weights[id]);});
-  if(e.items&&e.items.length){
-    form.items=e.items.map(function(it){
-      var sp={}; (it.split||[]).forEach(function(id){sp[id]=true;});
-      return {name:it.name,amount:it.amount,split:sp};
-    });
-    form.adjustMode=e.adjustMode||'proportional';
-    form.mode='items';
-  }
   document.getElementById('expTitle').textContent='Edit expense';
   document.getElementById('amount').value=plain(e.amount);
   document.getElementById('desc').value=e.desc||'';
@@ -1851,6 +1892,7 @@ function editEntry(e){
   document.getElementById('expErr').textContent='';
   document.getElementById('saveExpense').textContent='Save changes';
   resetShot();
+  restoreItems(e);          // resetShot() clears them, so put them back
   if(e.hasPhoto){
     document.getElementById('shotNote').textContent='Loading receipt\u2026';
     getPhoto(e.id,function(p){
@@ -1862,7 +1904,7 @@ function editEntry(e){
 }
 function openExpenseFromTemplate(t){
   form={cat:t.category||'Bills',paidBy:t.payer,split:Object.assign({},t.split),mode:'equal',custom:{},weights:{},
-        tplId:t.id,period:periodFor(t.freq||'monthly'),editingId:null};
+        items:null,adjustMode:null,tplId:t.id,period:periodFor(t.freq||'monthly'),editingId:null};
   document.getElementById('expTitle').textContent=t.name;
   document.getElementById('amount').value=(t.kind==='fixed'&&t.amount)?plain(t.amount):'';
   document.getElementById('desc').value=t.name+' · '+
@@ -1880,17 +1922,9 @@ function openExpenseFromTemplate(t){
 }
 function repeatEntry(e){
   form={cat:e.category||'Other',paidBy:e.paidBy,split:{},mode:(e.splitMode==='custom'?'equal':(e.splitMode||'equal')),
-        custom:{},weights:{},tplId:null,period:null,editingId:null};
+        custom:{},weights:{},items:null,adjustMode:null,tplId:null,period:null,editingId:null};
   Object.keys(e.shares||{}).forEach(function(id){form.split[id]=true;});
   if(e.weights)Object.keys(e.weights).forEach(function(id){form.weights[id]=String(e.weights[id]);});
-  if(e.items&&e.items.length){
-    form.items=e.items.map(function(it){
-      var sp={}; (it.split||[]).forEach(function(id){sp[id]=true;});
-      return {name:it.name,amount:it.amount,split:sp};
-    });
-    form.adjustMode=e.adjustMode||'proportional';
-    form.mode='items';
-  }
   document.getElementById('expTitle').textContent='Repeat expense';
   document.getElementById('amount').value=plain(e.amount);
   document.getElementById('desc').value=e.desc||'';
@@ -1900,6 +1934,7 @@ function repeatEntry(e){
   document.getElementById('expErr').textContent='';
   document.getElementById('saveExpense').textContent='Save expense';
   resetShot();
+  restoreItems(e);          // resetShot() clears them, so put them back
   drawExpenseChips(); drawSplitDetail(); openSheet('sheetExpense');
 }
 
@@ -1934,6 +1969,14 @@ function drawSplitDetail(){
   var itemised=form.mode==='items'&&form.items&&form.items.length;
   document.getElementById('customBox').style.display=(!itemised&&form.mode==='custom')?'block':'none';
   document.getElementById('ratioBox').style.display=(!itemised&&(form.mode==='percent'||form.mode==='shares'))?'block':'none';
+  /* Every box has to be hidden explicitly. This one was only hidden from inside
+     drawItems(), which doesn't run when the mode isn't items — so the previous
+     receipt's lines stayed on screen in the next expense. */
+  if(!itemised){
+    document.getElementById('itemsBox').style.display='none';
+    document.getElementById('itemRows').innerHTML='';
+    document.getElementById('diffBox').innerHTML='';
+  }
   if(!itemised&&form.mode==='custom')drawCustom();
   if(!itemised&&(form.mode==='percent'||form.mode==='shares'))drawRatio();
   if(itemised)drawItems();
@@ -2210,6 +2253,17 @@ function refreshItemTotals(){
   document.getElementById('adjProp').onclick=function(){form.adjustMode='proportional';refreshItemTotals();};
   document.getElementById('adjEqual').onclick=function(){form.adjustMode='equal';refreshItemTotals();};
 }
+/* Lines are stored with split as an array of member ids; the form wants a map.
+   Must run AFTER resetShot(), which deliberately clears both photo and lines. */
+function restoreItems(e){
+  if(!e.items||!e.items.length)return;
+  form.items=e.items.map(function(it){
+    var sp={}; (it.split||[]).forEach(function(id){sp[id]=true;});
+    return {name:it.name,amount:it.amount,split:sp};
+  });
+  form.adjustMode=e.adjustMode||'proportional';
+  form.mode='items';
+}
 function startItems(list){
   var ids=itemMembers();
   form.items=(list||[]).map(function(it){
@@ -2249,7 +2303,6 @@ function closePeek(){
 }
 function resetShot(){
   form.photo=null; form.photoChanged=false;
-  if(!form.items)form.items=null;
   var n=document.getElementById('shotNote'); n.className='shot-note'; n.textContent='';
   var o=document.getElementById('readOut'); o.className='read-out'; o.innerHTML='';
   var b=document.getElementById('readBtn'); b.disabled=false; b.textContent='Read the receipt';
@@ -2684,6 +2737,48 @@ function drawHelp(){
   });
 }
 function openHelp(){ helpOpen=-1; drawHelp(); closeSheets(); openSheet('sheetHelp'); }
+
+/* A read-only view of an itemised bill, so anyone can check what they were
+   charged for without opening the editor — which only its author can do. */
+function openBreakdown(e){
+  var box=document.getElementById('breakBody'); box.innerHTML='';
+  var items=(e.items||[]).map(function(it){
+    var sp={}; (it.split||[]).forEach(function(id){sp[id]=true;});
+    return {name:it.name,amount:it.amount,split:sp};
+  });
+  var ids=Object.keys(e.shares||{});
+  var r=itemShares(items,ids,e.amount,e.adjustMode||'proportional');
+
+  items.forEach(function(it){
+    var on=Object.keys(it.split).filter(function(k){return it.split[k];});
+    var names=on.length?on.map(function(id){return memberById(id).name;}).join(', '):'everyone';
+    var each=on.length?Math.floor(it.amount/on.length):it.amount;
+    var row=document.createElement('div'); row.className='bk-line';
+    row.innerHTML='<div style="flex:1;min-width:0"><div class="bk-name">'+esc(it.name||'Item')+'</div>'+
+      '<div class="bk-who">'+esc(names)+(on.length>1?' \u00b7 '+money(each)+' each':'')+'</div></div>'+
+      '<div class="bk-amt">'+money(it.amount)+'</div>';
+    box.appendChild(row);
+  });
+
+  var foot=document.createElement('div');
+  foot.innerHTML='<div class="bk-sum"><span>Lines add up to</span><span class="v">'+money(r.itemsSum)+'</span></div>'+
+    (r.diff!==0?'<div class="bk-sum bk-adj"><span>'+(r.diff<0?'Discount':'Extra')+', shared '+
+      ((e.adjustMode==='equal')?'evenly':'in proportion')+'</span><span class="v">'+
+      (r.diff<0?'\u2212':'+')+money(Math.abs(r.diff))+'</span></div>':'')+
+    '<div class="bk-sum tot"><span>Total paid</span><span class="v">'+money(e.amount)+'</span></div>';
+  box.appendChild(foot);
+
+  var h=document.createElement('div'); h.className='stmt-sec'; h.textContent='What each person owes';
+  box.appendChild(h);
+  ids.forEach(function(id){
+    var row=document.createElement('div'); row.className='bk-sum';
+    row.innerHTML='<span>'+esc(memberById(id).name)+(id===me?' (you)':'')+'</span>'+
+      '<span class="v">'+money(e.shares[id]||0)+'</span>';
+    box.appendChild(row);
+  });
+
+  closeSheets(); openSheet('sheetBreak');
+}
 
 /* ---------- monthly statement ---------- */
 var stmtPeriod=null, stmtOpen={};
