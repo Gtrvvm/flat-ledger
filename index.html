@@ -797,6 +797,8 @@ var CATS=['Rent','Bills','Groceries','Eating out','Household','Transport','Other
 
 var state=null, me=null, db=null, fbRefs=null, online=false, suppress=false, searchTerm='', showVoid=false;
 var outbox=[], flushing=false, flushTimer=null;
+var OUTBOX_ROTATE_AFTER=3;    // move a failing job to the back after this many tries
+var OUTBOX_MAX_TRIES=30;      // and abandon it eventually rather than jamming
 /* Developer mode hides the three settings a flatmate could break by accident:
    the Firebase config, the push key and the receipt-reader address. It is per
    phone, not shared. This is tidiness, not security — the values still live in
@@ -817,7 +819,12 @@ var form={cat:'Groceries',paidBy:null,split:{},mode:'equal',custom:{},tplId:null
 var tplForm=null;
 
 /* ---------- money ---------- */
-function toPence(s){var n=parseFloat(String(s).replace(/[^0-9.]/g,''));return isNaN(n)?NaN:Math.round(n*100);}
+function toPence(s){
+  var raw=String(s).trim();
+  if(/^-/.test(raw))return NaN;          // "-5" used to come out as £5.00
+  var n=parseFloat(raw.replace(/[^0-9.]/g,''));
+  return isNaN(n)?NaN:Math.round(n*100);
+}
 function money(p){var neg=p<0;p=Math.abs(p);return (neg?'-£':'£')+(p/100).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');}
 function plain(p){return (p/100).toFixed(2);}
 function splitEqual(total,ids){var o={},n=ids.length;if(!n)return o;var b=Math.floor(total/n),r=total-b*n;
@@ -1082,11 +1089,24 @@ function flush(){
 
   op.then(function(){
     outbox=outbox.filter(function(j){return j.key!==job.key;});
+    job.tries=0;
     saveOutbox(); flushing=false; renderSync();
     if(outbox.length)flush();
-  }).catch(function(){
-    // Still offline, or the write failed. Leave it queued and try again later.
-    flushing=false; renderSync(); scheduleFlush();
+  }).catch(function(err){
+    /* Always retrying the head of the queue means one job that can never
+       succeed blocks everything behind it forever. After a few goes it moves
+       to the back so the rest can get through, and after many it is dropped
+       with a warning rather than jamming the app indefinitely. */
+    job.tries=(job.tries||0)+1;
+    if(job.tries>=OUTBOX_MAX_TRIES){
+      console.error('[flat-ledger] giving up on a change after '+job.tries+' tries:',job.key,err);
+      outbox=outbox.filter(function(j){return j.key!==job.key;});
+      status('One change could not be saved to the flat — check it is there');
+    } else if(job.tries%OUTBOX_ROTATE_AFTER===0 && outbox.length>1){
+      outbox=outbox.filter(function(j){return j.key!==job.key;});
+      outbox.push(job);                       // let the others have a turn
+    }
+    saveOutbox(); flushing=false; renderSync(); scheduleFlush();
   });
 }
 function scheduleFlush(){
