@@ -1758,7 +1758,15 @@ function openActions(e){
     hd.textContent=e.items.length+' items';
     det.appendChild(hd);
     e.items.forEach(function(it){
-      var who=(it.split||[]).map(function(id){return memberById(id).name;});
+      /* split is {id: weight} on anything saved since shares arrived, and a
+         plain array on older entries. Calling .map on the object threw, which
+         killed openActions half-way and left the sheet with no buttons at all. */
+      var ws=it.split||{};
+      var who=(Array.isArray(ws)?ws:Object.keys(ws).filter(function(k){return ws[k];}))
+        .map(function(id){
+          var w=Array.isArray(ws)?1:(Number(ws[id])||1);
+          return memberById(id).name+(w>1?' \u00d7'+w:'');
+        });
       var r=document.createElement('div'); r.className='pd-row';
       r.innerHTML='<span class="pd-name">'+esc(it.name||'Item')+
         '<span style="display:block;font-size:11px;color:var(--muted);margin-top:1px">'+
