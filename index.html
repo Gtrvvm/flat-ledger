@@ -225,7 +225,12 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 .item-amt{width:76px;font-family:var(--mono);font-size:13px;text-align:right;border:1px solid var(--line);
   border-radius:6px;padding:5px 7px;font-variant-numeric:tabular-nums}
 .item-del{background:none;border:0;color:var(--muted);font-size:15px;cursor:pointer;padding:0 2px;line-height:1}
-.item-who{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.item-who{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;align-items:center}
+.who-preset{font-family:var(--display);font-size:11px;font-weight:600;color:var(--ink-soft);
+  background:var(--card);border:1px solid var(--line);border-radius:999px;padding:4px 8px;max-width:118px}
+.items-apply{display:flex;align-items:center;gap:8px;margin-top:10px}
+.items-apply select{flex:1;font-family:var(--display);font-size:13px;color:var(--ink);
+  background:var(--card);border:1px solid var(--line);border-radius:9px;padding:9px 10px}
 .who-chip{font-family:var(--display);font-size:11px;font-weight:600;padding:4px 9px;border-radius:999px;
   border:1px solid var(--line);background:var(--card);color:var(--muted);cursor:pointer}
 .who-chip.on{background:var(--blue);border-color:var(--blue);color:#fff}
@@ -534,12 +539,17 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
   </div>
   <div class="field" id="itemsBox" style="display:none">
     <span class="label">Items — who had what</span>
-    <p class="hint" style="margin:0 0 10px" id="itemsHint">Add a line for each thing, then tap names to say who had it.</p>
+    <p class="hint" style="margin:0 0 10px" id="itemsHint">Tap names to say who had each thing. Tap a name again for a bigger share — ×2 means twice as much of that line.</p>
     <div id="itemRows"></div>
     <div class="item-foot">
       <span class="k">Items add up to</span><span class="v" id="itemsSum">£0.00</span>
     </div>
     <div id="diffBox"></div>
+    <div class="items-apply" id="applyAllWrap" style="display:none">
+      <select id="applyAll" aria-label="Apply a saved split to every line">
+        <option value="">Apply a saved split to every line…</option>
+      </select>
+    </div>
     <div style="display:flex;gap:6px;margin-top:10px">
       <button class="btn small" id="itemAdd" type="button">Add a line</button>
       <button class="btn small" id="itemClear" type="button">Stop itemising</button>
@@ -852,9 +862,12 @@ function itemShares(items, ids, total, adjustMode){
   var itemsSum=0;
   (items||[]).forEach(function(it){
     var on=Object.keys(it.split||{}).filter(function(k){return it.split[k]&&ids.indexOf(k)>-1;});
-    if(!on.length)on=ids.slice();               // an unassigned line falls to everyone
+    var weights={};
+    on.forEach(function(k){ var w=Number(it.split[k]); weights[k]=(w>0?w:1); });
+    if(!on.length){ on=ids.slice(); on.forEach(function(k){weights[k]=1;}); }  // unassigned falls to everyone
     itemsSum+=it.amount;
-    var per=splitEqual(it.amount,on);
+    // A weight of 1 for everyone is an equal split, so one path covers both.
+    var per=splitByWeight(it.amount,on,weights);
     on.forEach(function(k){ base[k]+=per[k]; });
   });
 
@@ -2228,20 +2241,46 @@ function drawItems(){
 
     var who=document.createElement('div'); who.className='item-who';
     ids.forEach(function(id){
+      var w=Number(it.split[id])||0;
       var b=document.createElement('button'); b.type='button';
-      b.className='who-chip'+(it.split[id]?' on':'');
-      b.textContent=memberById(id).name;
-      b.onclick=function(){ it.split[id]=!it.split[id]; drawItems(); };
+      b.className='who-chip'+(w?' on':'');
+      b.textContent=memberById(id).name+(w>1?' \u00d7'+w:'');
+      b.title='Tap again for a bigger share';
+      /* Tapping cycles off → 1 → 2 → 3 → 4 → off. Two shares means twice as
+         much of that line, which covers "he had two of those" and is how you
+         get an uneven split without typing percentages per item. */
+      b.onclick=function(){
+        var n=(Number(it.split[id])||0)+1;
+        if(n>4)n=0;
+        if(n)it.split[id]=n; else delete it.split[id];
+        drawItems();
+      };
       who.appendChild(b);
     });
+    if(state.presets&&state.presets.length){
+      var psel=document.createElement('select'); psel.className='who-preset';
+      psel.setAttribute('aria-label','Apply a saved split to this line');
+      var ph=document.createElement('option'); ph.value=''; ph.textContent='Saved split\u2026';
+      psel.appendChild(ph);
+      state.presets.forEach(function(ps){
+        var o=document.createElement('option'); o.value=ps.id; o.textContent=ps.name; psel.appendChild(o);
+      });
+      psel.onchange=function(){
+        var ps=null;
+        state.presets.forEach(function(x){ if(x.id===psel.value)ps=x; });
+        if(ps)applyPresetToItem(it,ps);
+        drawItems();
+      };
+      who.appendChild(psel);
+    }
     var mine=document.createElement('button'); mine.type='button'; mine.className='who-all';
     var onlyMe=Object.keys(it.split).filter(function(k){return it.split[k];});
     mine.textContent=(onlyMe.length===1&&onlyMe[0]===me)?'EVERYONE':'JUST ME';
     mine.onclick=function(){
       var solo=(onlyMe.length===1&&onlyMe[0]===me);
       it.split={};
-      if(solo)ids.forEach(function(id){it.split[id]=true;});
-      else it.split[me]=true;
+      if(solo)ids.forEach(function(id){it.split[id]=1;});
+      else it.split[me]=1;
       drawItems();
     };
     who.appendChild(mine);
@@ -2249,7 +2288,27 @@ function drawItems(){
     rows.appendChild(row);
   });
 
+  var wrap=document.getElementById('applyAllWrap'), all=document.getElementById('applyAll');
+  if(state.presets&&state.presets.length){
+    wrap.style.display='flex';
+    all.innerHTML='<option value="">Apply a saved split to every line\u2026</option>';
+    state.presets.forEach(function(ps){
+      var o=document.createElement('option'); o.value=ps.id; o.textContent=ps.name; all.appendChild(o);
+    });
+    all.value='';
+  } else wrap.style.display='none';
+
   refreshItemTotals();
+}
+// Percentages and shares are both just relative weights, so either kind of
+// saved split drops straight onto a line.
+function applyPresetToItem(it,ps){
+  var ids=itemMembers(), sp={};
+  Object.keys(ps.weights||{}).forEach(function(id){
+    var w=Number(ps.weights[id])||0;
+    if(w>0&&ids.indexOf(id)>-1)sp[id]=w;
+  });
+  if(Object.keys(sp).length)it.split=sp;   // a preset naming nobody here changes nothing
 }
 function refreshItemTotals(){
   if(!form.items||!form.items.length)return;
@@ -2278,7 +2337,9 @@ function refreshItemTotals(){
 function restoreItems(e){
   if(!e.items||!e.items.length)return;
   form.items=e.items.map(function(it){
-    var sp={}; (it.split||[]).forEach(function(id){sp[id]=true;});
+    var sp={};
+    if(Array.isArray(it.split)) it.split.forEach(function(id){sp[id]=1;});      // older entries
+    else Object.keys(it.split||{}).forEach(function(id){sp[id]=Number(it.split[id])||1;});
     return {name:it.name,amount:it.amount,split:sp};
   });
   form.adjustMode=e.adjustMode||'proportional';
@@ -2287,7 +2348,7 @@ function restoreItems(e){
 function startItems(list){
   var ids=itemMembers();
   form.items=(list||[]).map(function(it){
-    var sp={}; ids.forEach(function(id){sp[id]=true;});      // default: the whole-bill split
+    var sp={}; ids.forEach(function(id){sp[id]=1;});         // default: the whole-bill split, one share each
     return {name:it.name, amount:Math.round(it.price*100), split:sp};
   });
   form.adjustMode='proportional';
@@ -2763,7 +2824,9 @@ function openHelp(){ helpOpen=-1; drawHelp(); closeSheets(); openSheet('sheetHel
 function openBreakdown(e){
   var box=document.getElementById('breakBody'); box.innerHTML='';
   var items=(e.items||[]).map(function(it){
-    var sp={}; (it.split||[]).forEach(function(id){sp[id]=true;});
+    var sp={};
+    if(Array.isArray(it.split)) it.split.forEach(function(id){sp[id]=1;});
+    else Object.keys(it.split||{}).forEach(function(id){sp[id]=Number(it.split[id])||1;});
     return {name:it.name,amount:it.amount,split:sp};
   });
   var ids=Object.keys(e.shares||{});
@@ -2771,11 +2834,17 @@ function openBreakdown(e){
 
   items.forEach(function(it){
     var on=Object.keys(it.split).filter(function(k){return it.split[k];});
-    var names=on.length?on.map(function(id){return memberById(id).name;}).join(', '):'everyone';
-    var each=on.length?Math.floor(it.amount/on.length):it.amount;
+    var alloc=on.length?splitByWeight(it.amount,on,it.split):null;
+    var names=on.length
+      ? on.map(function(id){
+          var w=Number(it.split[id])||1;
+          return memberById(id).name+(w>1?' \u00d7'+w:'')+
+                 (on.length>1?' '+money(alloc[id]):'');
+        }).join(' \u00b7 ')
+      : 'everyone';
     var row=document.createElement('div'); row.className='bk-line';
     row.innerHTML='<div style="flex:1;min-width:0"><div class="bk-name">'+esc(it.name||'Item')+'</div>'+
-      '<div class="bk-who">'+esc(names)+(on.length>1?' \u00b7 '+money(each)+' each':'')+'</div></div>'+
+      '<div class="bk-who">'+esc(names)+'</div></div>'+
       '<div class="bk-amt">'+money(it.amount)+'</div>';
     box.appendChild(row);
   });
@@ -3201,7 +3270,7 @@ function wire(){
     form.mode='items';
     // Reading a receipt fills these in; started by hand you get one blank line.
     if(!form.items||!form.items.length){
-      var sp={}; itemMembers().forEach(function(id){sp[id]=true;});
+      var sp={}; itemMembers().forEach(function(id){sp[id]=1;});
       form.items=[{name:'',amount:0,split:sp}];
       form.adjustMode='proportional';
     }
@@ -3213,8 +3282,14 @@ function wire(){
     if(form.mode==='items')refreshItemTotals();
   };
 
+  document.getElementById('applyAll').onchange=function(){
+    var sel=document.getElementById('applyAll'), ps=null;
+    state.presets.forEach(function(x){ if(x.id===sel.value)ps=x; });
+    if(ps)form.items.forEach(function(it){ applyPresetToItem(it,ps); });
+    drawItems();
+  };
   document.getElementById('itemAdd').onclick=function(){
-    var sp={}; itemMembers().forEach(function(id){sp[id]=true;});
+    var sp={}; itemMembers().forEach(function(id){sp[id]=1;});
     form.items.push({name:'',amount:0,split:sp});
     drawItems();
   };
@@ -3301,8 +3376,13 @@ function wire(){
     if(weights)e.weights=weights;
     if(form.mode==='items'&&form.items&&form.items.length){
       e.items=form.items.map(function(it){
-        return {name:it.name||'', amount:it.amount,
-                split:Object.keys(it.split).filter(function(k){return it.split[k];})};
+        // {id: weight}, so "Jacky had two" survives a save. Older entries hold
+        // a plain array of ids, which restoreItems still understands.
+        var sp={};
+        Object.keys(it.split).forEach(function(k){
+          if(it.split[k]) sp[k]=Number(it.split[k])||1;
+        });
+        return {name:it.name||'', amount:it.amount, split:sp};
       });
       e.adjustMode=form.adjustMode||'proportional';
     } else { delete e.items; delete e.adjustMode; }
