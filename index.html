@@ -539,7 +539,7 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
   </div>
   <div class="field" id="itemsBox" style="display:none">
     <span class="label">Items — who had what</span>
-    <p class="hint" style="margin:0 0 10px" id="itemsHint">Tap names to say who had each thing. Tap a name again for a bigger share — ×2 means twice as much of that line.</p>
+    <p class="hint" style="margin:0 0 10px" id="itemsHint">Tap names to say who had each thing. For an uneven line, apply a saved split.</p>
     <div id="itemRows"></div>
     <div class="item-foot">
       <span class="k">Items add up to</span><span class="v" id="itemsSum">£0.00</span>
@@ -2244,15 +2244,12 @@ function drawItems(){
       var w=Number(it.split[id])||0;
       var b=document.createElement('button'); b.type='button';
       b.className='who-chip'+(w?' on':'');
+      // Straight in-or-out. Uneven lines are handled by a saved split instead,
+      // which doesn't make a simple line take several taps to get right.
       b.textContent=memberById(id).name+(w>1?' \u00d7'+w:'');
-      b.title='Tap again for a bigger share';
-      /* Tapping cycles off → 1 → 2 → 3 → 4 → off. Two shares means twice as
-         much of that line, which covers "he had two of those" and is how you
-         get an uneven split without typing percentages per item. */
       b.onclick=function(){
-        var n=(Number(it.split[id])||0)+1;
-        if(n>4)n=0;
-        if(n)it.split[id]=n; else delete it.split[id];
+        if(it.split[id]) delete it.split[id];
+        else it.split[id]=1;
         drawItems();
       };
       who.appendChild(b);
