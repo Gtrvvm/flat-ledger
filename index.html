@@ -131,7 +131,7 @@ h1.title{font-size:30px;font-weight:800;letter-spacing:-.03em;margin:4px 0 0;lin
 .scrim.open{display:block}
 .sheet{position:fixed;left:50%;bottom:0;transform:translateX(-50%);width:100%;max-width:560px;max-height:92vh;overflow-y:auto;background:var(--card);border-radius:18px 18px 0 0;z-index:51;padding:18px 16px calc(26px + var(--safe-b));display:none;animation:up .22s cubic-bezier(.2,.7,.3,1)}
 .sheet.open{display:block}
-#sheetTpl,#sheetPreset,#sheetHelp{z-index:53}   /* opened from Settings, so they must stack above it */
+#sheetTpl,#sheetPreset,#sheetHelp,#sheetCard{z-index:53}   /* opened from Settings, so they must stack above it */
 #sheetAsk{z-index:60}                /* always on top of whatever asked */
 #sheetAct{z-index:52}
 @keyframes up{from{transform:translate(-50%,22px);opacity:.4}to{transform:translate(-50%,0);opacity:1}}
@@ -359,6 +359,42 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 .searchbox .clear{background:none;border:0;color:var(--muted);font-family:var(--mono);font-size:10px;letter-spacing:.08em;cursor:pointer;padding:0}
 .searchbox .mag{color:var(--muted);font-size:13px}
 .entry-note{font-size:12px;color:var(--ink-soft);margin-top:5px;padding-left:9px;border-left:2px solid var(--line);line-height:1.4;word-break:break-word}
+/* Gift cards live in their own picker, not among the people chips: a card name
+   plus its balance makes a pill three times the width of "Jacky", and with
+   several cards the row turned into a wall. */
+.cardpick{width:auto;max-width:100%;margin-top:8px;font-family:var(--display);font-size:13px;
+  padding:8px 14px;border-radius:999px;color:var(--muted);background:var(--card);
+  border:1px dashed var(--line);cursor:pointer;text-align:left}
+.cardpick.on{border:1px solid var(--amber);background:var(--amber-wash);color:var(--ink);font-weight:700}
+#sheetCardPick{z-index:54}          /* opened from the expense form, so it sits above it */
+.pickrow{display:flex;align-items:center;gap:12px;width:100%;text-align:left;cursor:pointer;
+  font-family:var(--display);background:var(--card);border:1px solid var(--line);
+  border-radius:12px;padding:14px;margin-bottom:8px}
+.pickrow.on{border-color:var(--amber);background:var(--amber-wash)}
+.pickrow .pn{flex:1;min-width:0}
+.pickrow .nm{font-size:15px;font-weight:700;color:var(--ink)}
+.pickrow .sb{font-size:12px;color:var(--muted);margin-top:3px}
+.pickrow .bal{font-family:var(--mono);font-size:17px;font-weight:700;color:var(--ink);white-space:nowrap}
+.pickrow .bal.low{color:var(--red)}
+.pickrow.none{border-style:dashed}
+.pickrow.none .nm{color:var(--ink-soft);font-weight:600}
+.worthrow{display:flex;gap:8px}
+.worth{position:relative;flex:1;min-width:0}
+.worth .pre{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted);font-family:var(--mono);font-size:14px}
+.worth .pre+.input{padding-left:26px}
+.worth .post{position:absolute;right:11px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:12px}
+.worth .input{font-family:var(--mono);font-size:15px;padding-right:48px}
+.cardnote{background:var(--amber-wash);border:1px solid #EEDDB6;border-radius:9px;padding:11px;
+  font-size:12px;color:var(--ink-soft);line-height:1.5;margin-top:10px}
+.cardnote b{color:var(--ink)}
+.cardnote.low{background:var(--red-wash);border-color:#EFD3CE;color:var(--red)}
+.card-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px dashed var(--line-soft)}
+.card-row:last-child{border-bottom:0}
+.card-body{flex:1;min-width:0}
+.card-name{font-size:14px;font-weight:700;letter-spacing:-.01em}
+.card-sub{font-size:12px;color:var(--muted);margin-top:2px}
+.card-bal{font-family:var(--mono);font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;flex-shrink:0}
+.card-bal.low{color:var(--red)}
 .chip.pct.on{background:var(--amber);border-color:var(--amber);color:#fff}
 .pct-row{display:flex;align-items:center;gap:8px;margin-bottom:7px}
 .pct-row label{flex:1;font-size:13px;font-weight:600;min-width:0}
@@ -415,6 +451,11 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
       <div id="dueList"></div>
     </div>
 
+    <div class="card" id="cardsCard" style="display:none">
+      <div class="sec"><h2>Gift cards</h2></div>
+      <div id="cardsList"></div>
+    </div>
+
     <div class="card" id="beamCard">
       <div class="sec">
         <h2>Where everyone stands</h2>
@@ -465,6 +506,8 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 </div>
 
 <div class="scrim" id="scrim"></div>
+<!-- the picker opens on top of the expense form, so it needs a dim of its own -->
+<div class="scrim" id="pickScrim" style="z-index:53"></div>
 
 <div class="peek" id="peek" role="dialog" aria-label="Receipt, full size">
   <button class="peek-close" id="peekClose">Close</button>
@@ -494,7 +537,18 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
   <div class="field"><label class="label" for="desc">What for</label>
     <input class="input" id="desc" type="text" placeholder="e.g. Tesco shop" autocomplete="off"></div>
   <div class="field"><span class="label">Category</span><div class="chips" id="cats"></div></div>
-  <div class="field"><span class="label">Paid by</span><div class="chips" id="paidBy"></div></div>
+  <div class="field"><span class="label">Paid by</span><div class="chips" id="paidBy"></div>
+    <button type="button" class="cardpick" id="cardPick" style="display:none"></button></div>
+  <div class="field" id="topupBox" style="display:none">
+    <span class="label">Value on the card</span>
+    <div class="worthrow">
+      <div class="worth"><span class="pre">£</span><input class="input" id="cardWorth" type="text"
+        inputmode="decimal" placeholder="same as paid" autocomplete="off"></div>
+      <div class="worth"><input class="input" id="cardOff" type="text" inputmode="decimal"
+        placeholder="0" autocomplete="off"><span class="post">% off</span></div>
+    </div>
+    <div class="cardnote" id="worthNote"></div>
+  </div>
   <div class="field"><span class="label">Split between</span>
     <div class="chips" id="splitWith"></div>
     <div class="chips" style="margin-top:8px">
@@ -505,6 +559,7 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
       <button class="chip" id="modeItems" type="button">Item by item</button>
     </div>
   </div>
+  <div class="field" id="cardNoteBox" style="display:none"><div class="cardnote" id="cardNote"></div></div>
   <div class="field" id="customBox" style="display:none">
     <span class="label" id="customLabel">Each person owes</span>
     <div id="customRows"></div>
@@ -623,6 +678,28 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
   </div>
 </div>
 
+<!-- WHICH GIFT CARD -->
+<div class="sheet" id="sheetCardPick" role="dialog" aria-label="Pay with a gift card">
+  <div class="sheet-head"><h3>Pay with a gift card</h3><button class="btn small" id="cardPickClose">Close</button></div>
+  <p class="hint" style="margin-top:-6px">Nobody owes anything for a card payment — the money was shared out when the card was topped up.</p>
+  <div id="cardPickList"></div>
+</div>
+
+<!-- GIFT CARD EDITOR -->
+<div class="sheet" id="sheetCard" role="dialog" aria-label="Gift card">
+  <div class="sheet-head"><h3 id="cardTitle">Gift card</h3><button class="btn small" id="cardClose">Close</button></div>
+  <div class="field"><label class="label" for="cardName">Name</label>
+    <input class="input" id="cardName" type="text" placeholder="e.g. Tesco card" autocomplete="off"></div>
+  <div class="field"><span class="label">Who holds it</span><div class="chips" id="cardOwner"></div></div>
+  <p class="hint">Top it up from the main screen. Its balance is whatever has been topped up, less whatever has been spent on it.</p>
+  <div class="err" id="cardErr"></div>
+  <div style="display:flex;gap:8px;margin-top:10px">
+    <button class="btn" id="cardDelete" style="flex:0 0 auto;padding:13px 14px">Delete</button>
+    <button class="btn" id="cardRetire" style="flex:0 0 auto;padding:13px 14px">Retire</button>
+    <button class="btn primary" id="cardSave" style="flex:1;padding:13px;font-size:15px">Save card</button>
+  </div>
+</div>
+
 <!-- SAVED SPLIT EDITOR -->
 <div class="sheet" id="sheetPreset" role="dialog" aria-label="Saved split">
   <div class="sheet-head"><h3 id="psTitle">Saved split</h3><button class="btn small" id="psClose">Close</button></div>
@@ -729,6 +806,14 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 
   <div class="divider"></div>
 
+  <div class="field"><span class="label">Gift cards</span>
+    <div id="cardRows"></div>
+    <button class="btn small" id="addCard" style="margin-top:8px">Add a gift card</button>
+    <p class="hint">Buy a card, top it up here so everyone settles their share, then pick the card as the payer when you spend it. Spending a card moves nothing between you — it was already paid for.</p>
+  </div>
+
+  <div class="divider"></div>
+
   <div class="field"><span class="label">Saved splits</span>
     <div id="presetRows"></div>
     <button class="btn small" id="addPreset" style="margin-top:8px">New saved split</button>
@@ -825,7 +910,7 @@ var presence={}, deviceId=null;
    DOM after a year, so it pages. Kept outside render() so a background update
    doesn't collapse what you've already expanded. */
 var PAGE=8, shownCount=PAGE;
-var form={cat:'Groceries',paidBy:null,split:{},mode:'equal',custom:{},tplId:null};
+var form={cat:'Groceries',paidBy:null,split:{},mode:'equal',custom:{},payCard:null,topupCard:null,tplId:null};
 var tplForm=null;
 
 /* ---------- money ---------- */
@@ -1044,6 +1129,7 @@ function blank(){
       {id:'t5',name:'Heating',category:'Bills',kind:'variable',amount:0,payer:'m1',split:Object.assign({},all)}
     ],
     presets:[{id:'ps1',name:'Food shop',mode:'percent',weights:{m1:40,m2:20,m3:20,m4:20}}],
+    cards:[],
     ocrUrl:'',
     vapid:'',
     entries:{}
@@ -1056,6 +1142,7 @@ function normalise(d){
   d.members=Array.isArray(d.members)&&d.members.length?d.members:b.members;
   d.templates=Array.isArray(d.templates)?d.templates:[];
   d.presets=Array.isArray(d.presets)?d.presets:[];
+  d.cards=Array.isArray(d.cards)?d.cards:[];
   d.ocrUrl=typeof d.ocrUrl==='string'?d.ocrUrl:'';
   d.vapid=typeof d.vapid==='string'?d.vapid:'';
   if(!d.entries||typeof d.entries!=='object')d.entries={};
@@ -1154,7 +1241,8 @@ function pushMeta(){
     return;
   }
   enqueue({kind:'meta',payload:{flatName:state.flatName,members:state.members,
-    templates:state.templates,presets:state.presets,ocrUrl:state.ocrUrl||'',vapid:state.vapid||''}});
+    templates:state.templates,presets:state.presets,cards:state.cards||[],
+    ocrUrl:state.ocrUrl||'',vapid:state.vapid||''}});
 }
 function pushEntry(e){
   state.entries[e.id]=e; saveLocal(); render();
@@ -1209,9 +1297,45 @@ function findMatchingPayment(from,to,amount,ignoreId,date){
   return hits.length?hits[0]:null;
 }
 // A payment only moves money once the person who received it says it arrived.
+/* A gift card holds money that was settled when it was topped up: the top-up
+   is an ordinary expense, split as usual, and that is where the money leaves
+   people's pockets. Spending from the card afterwards moves nothing between
+   anyone — it only draws the card down — so it stays out of the balances and
+   out of the statement, which would otherwise count the same money twice. */
+function cardById(id){
+  var cs=state.cards||[];
+  for(var i=0;i<cs.length;i++)if(cs[i].id===id)return cs[i];
+  return {id:id,name:'Gift card',owner:null,active:false};
+}
+function activeCards(){ return (state.cards||[]).filter(function(c){return c.active!==false;}); }
+function topupValue(e){ return (e.cardValue==null)?e.amount:e.cardValue; }
+function cardBonus(id){   // how much the discounts have handed the flat so far
+  var extra=0;
+  entryList().forEach(function(e){
+    if(e.voided||e.cardId!==id||!e.cardTopup)return;
+    extra+=topupValue(e)-e.amount;
+  });
+  return extra;
+}
+function cardBalance(id){
+  var bal=0;
+  entryList().forEach(function(e){
+    if(e.voided||e.cardId!==id)return;
+    // A discounted card holds more than it cost, so the top-up's own value wins.
+    if(e.cardTopup)bal+=topupValue(e);
+    else if(e.cardSpend)bal-=e.amount;
+  });
+  return bal;
+}
+// Who the ledger should name as having paid. A card spend has no person.
+function payerName(e){
+  if(e.cardSpend&&e.cardId)return cardById(e.cardId).name;
+  return memberById(e.paidBy).name;
+}
 function countsInBalance(e){
   if(e.voided)return false;
   if(e.type==='payment'&&e.status&&e.status!=='confirmed')return false;
+  if(e.cardSpend)return false;
   return true;
 }
 function liveEntries(){ return entryList().filter(countsInBalance); }
@@ -1330,6 +1454,7 @@ async function connect(){
       if(Array.isArray(v.members)&&v.members.length)state.members=v.members;
       state.templates=Array.isArray(v.templates)?v.templates:[];
       state.presets=Array.isArray(v.presets)?v.presets:[];
+      state.cards=Array.isArray(v.cards)?v.cards:[];
       state.ocrUrl=typeof v.ocrUrl==='string'?v.ocrUrl:'';
       state.vapid=typeof v.vapid==='string'?v.vapid:'';
       try{ localStorage.setItem(LS_VAPID,state.vapid); }catch(e){}
@@ -1466,6 +1591,23 @@ function render(){
     row.appendChild(btn); dueList.appendChild(row);
   });
 
+  // gift cards
+  var cc=document.getElementById('cardsCard'), cl=document.getElementById('cardsList');
+  var cards=activeCards();
+  cc.style.display=cards.length?'block':'none';
+  cl.innerHTML='';
+  cards.forEach(function(c){
+    var bal=cardBalance(c.id);
+    var row=document.createElement('div'); row.className='card-row';
+    row.innerHTML='<div class="card-body"><div class="card-name">'+esc(c.name)+'</div>'+
+      '<div class="card-sub">'+esc(c.owner?memberById(c.owner).name+' holds it':'nobody assigned')+
+      (cardBonus(c.id)>0?' · '+money(cardBonus(c.id))+' free so far':'')+'</div></div>'+
+      '<div class="card-bal'+(bal<=0?' low':'')+'">'+money(bal)+'</div>';
+    var tb=document.createElement('button'); tb.className='btn small'; tb.textContent='Top up';
+    tb.onclick=function(){ openTopup(c); };
+    row.appendChild(tb); cl.appendChild(row);
+  });
+
   // beam
   var max=1; Object.keys(b).forEach(function(id){max=Math.max(max,Math.abs(b[id]));});
   var beam=document.getElementById('beam'); beam.innerHTML='';
@@ -1555,7 +1697,8 @@ function render(){
   if(searchTerm){
     var q=searchTerm.toLowerCase();
     list=all.filter(function(e){
-      var hay=[e.desc||'',e.note||'',e.category||'',memberById(e.paidBy).name,plain(e.amount),e.date||'']
+      var hay=[e.desc||'',e.note||'',e.category||'',payerName(e),plain(e.amount),e.date||'',
+               e.cardId?cardById(e.cardId).name:'']
         .concat(Object.keys(e.shares||{}).map(function(id){return memberById(id).name;})).join(' ').toLowerCase();
       return hay.indexOf(q)>-1;
     });
@@ -1697,18 +1840,23 @@ function entryRow(e){
   var isDeclined=e.type==='payment'&&e.status==='declined'&&!e.voided;
   var row=document.createElement('div');
   row.className='entry'+(e.voided?' void':'')+((isPending||isDeclined)?' pending':'');
-  var isPay=e.type==='payment', payer=memberById(e.paidBy).name, sub;
-  if(isPay){ sub=payer+' paid '+Object.keys(e.shares||{}).map(function(id){return memberById(id).name;}).join(', '); }
+  var isPay=e.type==='payment', payer=payerName(e), sub;
+  if(e.cardSpend){
+    sub='Paid with '+payer+' · nobody owes anything';
+  } else if(isPay){ sub=payer+' paid '+Object.keys(e.shares||{}).map(function(id){return memberById(id).name;}).join(', '); }
   else {
     var n=Object.keys(e.shares||{}).length;
     var how=e.splitMode==='items'?(e.items?e.items.length+' items':'itemised'):
             e.splitMode==='percent'?'by %':e.splitMode==='shares'?'by shares':
             e.splitMode==='custom'?'exact amounts':'evenly';
-    sub=payer+' paid · '+n+' way'+(n===1?'':'s')+', '+how;
+    sub=payer+' paid · '+n+' way'+(n===1?'':'s')+', '+how+
+        (e.cardTopup?' · topped up '+cardById(e.cardId).name+
+          (topupValue(e)>e.amount?' to '+money(topupValue(e)):''):'');
   }
   var myShare=(e.shares&&e.shares[me])||0;
   var mineTxt=(!isPay&&myShare)?'you: '+money(myShare):'';
-  row.innerHTML='<div class="tag'+(isPay?' pay':'')+'">'+esc(isPay?'Payment':(e.category||'Other'))+'</div>'+
+  row.innerHTML='<div class="tag'+(isPay?' pay':'')+'">'+
+    esc(e.cardSpend?'Card':isPay?'Payment':(e.category||'Other'))+'</div>'+
     '<div class="entry-body"><div class="entry-desc">'+esc(e.desc||(isPay?'Settle up':'Expense'))+
       (e.hasPhoto?'<span class="clip" title="Has a receipt">\uD83D\uDCCE</span>':'')+'</div>'+
     '<div class="entry-sub">'+esc(sub)+'</div>'+
@@ -1742,7 +1890,7 @@ function entryRow(e){
 function openActions(e){
   var isPay=e.type==='payment';
   document.getElementById('actDesc').textContent=e.desc||(isPay?'Settle up':'Expense');
-  var bits=[memberById(e.paidBy).name+' paid', prettyDate(e.date)];
+  var bits=[payerName(e)+(e.cardSpend?'':' paid'), prettyDate(e.date)];
   if(e.addedBy)bits.push('added by '+memberById(e.addedBy).name);
   if(e.voided)bits.push('deleted by '+memberById(e.voidedBy).name);
   document.getElementById('actMeta').textContent=bits.join(' · ');
@@ -1897,12 +2045,14 @@ function askDone(ok){
 }
 function openSheet(id){document.getElementById('scrim').classList.add('open');document.getElementById(id).classList.add('open');}
 function closeSheets(){document.getElementById('scrim').classList.remove('open');
-  ['sheetExpense','sheetPay','sheetSettings','sheetTpl','sheetCsv','sheetAct','sheetPreset','sheetAsk','sheetStmt','sheetShot','sheetHelp','sheetBreak'].forEach(function(i){document.getElementById(i).classList.remove('open');});}
+  document.getElementById('pickScrim').classList.remove('open');
+  ['sheetExpense','sheetPay','sheetSettings','sheetTpl','sheetCsv','sheetAct','sheetPreset','sheetAsk','sheetStmt','sheetShot','sheetHelp','sheetBreak','sheetCard','sheetCardPick'].forEach(function(i){document.getElementById(i).classList.remove('open');});}
 
 function openExpense(){
   form={cat:'Groceries',paidBy:me,split:{},mode:'equal',custom:{},weights:{},
-        items:null,adjustMode:null,tplId:null,period:null,editingId:null};
+        payCard:null,topupCard:null,items:null,adjustMode:null,tplId:null,period:null,editingId:null};
   activeMembers().forEach(function(m){form.split[m.id]=true;});
+  setWorthFields(null,null);
   document.getElementById('expTitle').textContent='Add expense';
   document.getElementById('amount').value='';
   document.getElementById('desc').value='';
@@ -1917,13 +2067,16 @@ function openExpense(){
 }
 function editEntry(e){
   form={cat:e.category||'Other',paidBy:e.paidBy,split:{},mode:e.splitMode||'equal',custom:{},weights:{},
-        items:null,adjustMode:null,tplId:e.templateId||null,period:e.period||null,
+        payCard:null,topupCard:null,items:null,adjustMode:null,tplId:e.templateId||null,period:e.period||null,
         editingId:e.id,createdAt:e.createdAt};
   Object.keys(e.shares||{}).forEach(function(id){
     form.split[id]=true;
     form.custom[id]=plain(e.shares[id]);
   });
   if(e.weights)Object.keys(e.weights).forEach(function(id){form.weights[id]=String(e.weights[id]);});
+  if(e.cardSpend&&e.cardId){ form.payCard=e.cardId; form.paidBy=null; }
+  if(e.cardTopup&&e.cardId){ form.topupCard=e.cardId; }
+  setWorthFields(e.cardTopup?e.cardValue:null,e.amount);
   document.getElementById('expTitle').textContent='Edit expense';
   document.getElementById('amount').value=plain(e.amount);
   document.getElementById('desc').value=e.desc||'';
@@ -1945,7 +2098,8 @@ function editEntry(e){
 }
 function openExpenseFromTemplate(t){
   form={cat:t.category||'Bills',paidBy:t.payer,split:Object.assign({},t.split),mode:'equal',custom:{},weights:{},
-        items:null,adjustMode:null,tplId:t.id,period:periodFor(t.freq||'monthly'),editingId:null};
+        payCard:null,topupCard:null,items:null,adjustMode:null,tplId:t.id,period:periodFor(t.freq||'monthly'),editingId:null};
+  setWorthFields(null,null);
   document.getElementById('expTitle').textContent=t.name;
   document.getElementById('amount').value=(t.kind==='fixed'&&t.amount)?plain(t.amount):'';
   document.getElementById('desc').value=t.name+' · '+
@@ -1963,9 +2117,12 @@ function openExpenseFromTemplate(t){
 }
 function repeatEntry(e){
   form={cat:e.category||'Other',paidBy:e.paidBy,split:{},mode:(e.splitMode==='custom'?'equal':(e.splitMode||'equal')),
-        custom:{},weights:{},items:null,adjustMode:null,tplId:null,period:null,editingId:null};
+        custom:{},weights:{},payCard:null,topupCard:null,items:null,adjustMode:null,tplId:null,period:null,editingId:null};
   Object.keys(e.shares||{}).forEach(function(id){form.split[id]=true;});
   if(e.weights)Object.keys(e.weights).forEach(function(id){form.weights[id]=String(e.weights[id]);});
+  if(e.cardSpend&&e.cardId){ form.payCard=e.cardId; form.paidBy=null; }
+  if(e.cardTopup&&e.cardId){ form.topupCard=e.cardId; }
+  setWorthFields(e.cardTopup?e.cardValue:null,e.amount);
   document.getElementById('expTitle').textContent='Repeat expense';
   document.getElementById('amount').value=plain(e.amount);
   document.getElementById('desc').value=e.desc||'';
@@ -1979,6 +2136,120 @@ function repeatEntry(e){
   drawExpenseChips(); drawSplitDetail(); openSheet('sheetExpense');
 }
 
+/* Topping up is an ordinary expense — someone buys the card and everyone
+   settles their share — so it reuses the same form with the split intact. */
+function openTopup(c){
+  form={cat:'Groceries',paidBy:c.owner||me,split:{},mode:'equal',custom:{},weights:{},
+        payCard:null,topupCard:c.id,items:null,adjustMode:null,
+        tplId:null,period:null,editingId:null};
+  activeMembers().forEach(function(m){form.split[m.id]=true;});
+  setWorthFields(null,null);
+  document.getElementById('expTitle').textContent='Top up '+c.name;
+  document.getElementById('amount').value='';
+  document.getElementById('desc').value='Top up '+c.name;
+  document.getElementById('note').value='';
+  document.getElementById('date').value=today();
+  capDate('date');
+  document.getElementById('expErr').textContent='';
+  document.getElementById('saveExpense').textContent='Save top-up';
+  resetShot();
+  closeSheets();
+  drawExpenseChips(); drawSplitDetail(); openSheet('sheetExpense');
+  setTimeout(function(){document.getElementById('amount').focus();},90);
+}
+function drawTopup(){
+  /* Buying a card at a discount means the flat paid one number and can spend a
+     bigger one. People owe the first; the card holds the second. */
+  var box=document.getElementById('topupBox');
+  box.style.display=form.topupCard?'block':'none';
+  if(!form.topupCard)return;
+  var paid=toPence(document.getElementById('amount').value); if(isNaN(paid))paid=0;
+  var w=document.getElementById('cardWorth').value.trim();
+  var worth=w===''?paid:toPence(w);
+  var note=document.getElementById('worthNote');
+  if(w!==''&&(isNaN(worth)||worth<0)){
+    note.className='cardnote low';
+    note.textContent='That value does not look like an amount.';
+    return;
+  }
+  note.className='cardnote';
+  if(!paid){ note.textContent='Put in what you paid for the card first.'; return; }
+  var extra=worth-paid;
+  if(extra===0){
+    note.innerHTML='The card will hold <b>'+money(worth)+'</b>, the same as you paid. '+
+      'Fill in a value or a discount if you got more than you paid for.';
+  } else if(extra>0){
+    note.innerHTML='Everyone splits the <b>'+money(paid)+'</b> you paid. The card holds <b>'+
+      money(worth)+'</b> — <b>'+money(extra)+'</b> free, '+pctOff(paid,worth)+'% off.';
+  } else {
+    note.className='cardnote low';
+    note.innerHTML='The card would hold <b>'+money(worth)+'</b>, less than the <b>'+money(paid)+
+      '</b> you paid. Check the numbers.';
+  }
+}
+function setWorthFields(value,paid){
+  // blank unless this top-up really was worth more than it cost
+  var show=(value!=null&&paid!=null&&value!==paid);
+  document.getElementById('cardWorth').value=show?plain(value):'';
+  document.getElementById('cardOff').value=show?String(pctOff(paid,value)):'';
+}
+function pctOff(paid,worth){ return worth>0?(Math.round((1-paid/worth)*1000)/10):0; }
+function worthFromOff(){
+  // "3% off" means the card is worth what you paid divided by 0.97
+  var paid=toPence(document.getElementById('amount').value);
+  var off=parseFloat(document.getElementById('cardOff').value);
+  if(isNaN(paid)||isNaN(off)||off<=0||off>=100){ drawTopup(); return; }
+  document.getElementById('cardWorth').value=plain(Math.round(paid/(1-off/100)));
+  drawTopup();
+}
+function drawCardPick(){
+  /* One pill however many cards there are. A top-up is paid by a person,
+     so the picker is out of the way there. */
+  var cp=document.getElementById('cardPick');
+  if(!cardPickList().length){ cp.style.display='none'; cp.textContent=''; return; }
+  cp.style.display='block';
+  cp.className='cardpick'+(form.payCard?' on':'');
+  cp.textContent=form.payCard
+    ? cardById(form.payCard).name+' · '+money(cardBalance(form.payCard))+' left'
+    : 'Or pay with a gift card…';
+  cp.onclick=openCardPick;
+}
+function cardPickList(){
+  var cards=form.topupCard?[]:activeCards().slice();
+  // a card retired after this entry was logged still has to show on its own edit
+  if(form.payCard&&!cards.some(function(c){return c.id===form.payCard;}))cards.push(cardById(form.payCard));
+  return cards;
+}
+function openCardPick(){
+  /* Its own sheet rather than a system dropdown: a card needs its balance and
+     who holds it beside the name, and a native menu can show neither. */
+  var list=document.getElementById('cardPickList'); list.innerHTML='';
+  function row(cls,name,sub,bal,pick){
+    var b=document.createElement('button'); b.type='button'; b.className='pickrow'+cls;
+    b.innerHTML='<div class="pn"><div class="nm">'+esc(name)+'</div>'+
+      (sub?'<div class="sb">'+esc(sub)+'</div>':'')+'</div>'+
+      (bal===null?'':'<div class="bal'+(bal<=0?' low':'')+'">'+money(bal)+'</div>');
+    b.onclick=function(){ pick(); closeCardPick(); drawExpenseChips(); drawSplitDetail(); };
+    list.appendChild(b);
+  }
+  cardPickList().forEach(function(c){
+    var bal=cardBalance(c.id);
+    row(form.payCard===c.id?' on':'', c.name,
+      (c.owner?memberById(c.owner).name+' holds it':'nobody assigned')+
+      (bal<=0?' · needs topping up':(cardBonus(c.id)>0?' · '+money(cardBonus(c.id))+' free so far':'')),
+      bal, function(){ form.payCard=c.id; form.paidBy=null; });
+  });
+  row(' none','No gift card — someone paid','Split it between the flat as usual',null,
+    function(){ form.payCard=null; form.paidBy=form.paidBy||me; });
+  document.getElementById('pickScrim').classList.add('open');
+  document.getElementById('sheetCardPick').classList.add('open');
+}
+function closeCardPick(){
+  // only this one: the expense form underneath has to stay where it was
+  document.getElementById('pickScrim').classList.remove('open');
+  document.getElementById('sheetCardPick').classList.remove('open');
+}
+
 function drawExpenseChips(){
   var cats=document.getElementById('cats'); cats.innerHTML='';
   CATS.forEach(function(c){var b=document.createElement('button');b.type='button';
@@ -1987,7 +2258,11 @@ function drawExpenseChips(){
   var pb=document.getElementById('paidBy'); pb.innerHTML='';
   activeMembers().forEach(function(m){var b=document.createElement('button');b.type='button';
     b.className='chip'+(form.paidBy===m.id?' on':'');b.textContent=m.name;
-    b.onclick=function(){form.paidBy=m.id;drawExpenseChips();};pb.appendChild(b);});
+    b.onclick=function(){form.paidBy=m.id;form.payCard=null;drawExpenseChips();drawSplitDetail();};
+    pb.appendChild(b);});
+  drawCardPick(); drawTopup();
+  // A card paid the bill, so none of the people did — the chips would only mislead.
+  pb.style.display=form.payCard?'none':'flex';
   var sw=document.getElementById('splitWith'); sw.innerHTML='';
   activeMembers().forEach(function(m){var b=document.createElement('button');b.type='button';
     b.className='chip split'+(form.split[m.id]?' on':'');b.textContent=m.name;
@@ -2007,6 +2282,31 @@ function openExpenseAgain(){   // ask() closes every sheet, so bring the expense
   drawExpenseChips(); drawSplitDetail(); openSheet('sheetExpense');
 }
 function drawSplitDetail(){
+  /* Paying with a card settles nothing between people, so there is no split to
+     pick. The money was shared out when the card was topped up. */
+  var onCard=!!form.payCard;
+  document.getElementById('splitWith').parentNode.style.display=onCard?'none':'block';
+  var nb=document.getElementById('cardNoteBox'), nt=document.getElementById('cardNote');
+  nb.style.display=onCard?'block':'none';
+  if(onCard){
+    var bal=cardBalance(form.payCard), amt=toPence(document.getElementById('amount').value);
+    if(isNaN(amt))amt=0;
+    var after=bal-amt;
+    nt.className='cardnote'+(after<0?' low':'');
+    nt.innerHTML='Paid with <b>'+esc(cardById(form.payCard).name)+'</b>, so nobody owes anything \u2014 '+
+      'this was settled when the card was topped up.<br>'+
+      '<b>'+money(bal)+'</b> on the card'+(amt?', <b>'+money(after)+'</b> after this':'')+
+      (after<0?' \u2014 that is more than the card holds.':'.');
+  }
+  if(onCard){
+    document.getElementById('customBox').style.display='none';
+    document.getElementById('ratioBox').style.display='none';
+    document.getElementById('itemsBox').style.display='none';
+    return;
+  }
+  drawSplitDetailInner();
+}
+function drawSplitDetailInner(){
   var itemised=form.mode==='items'&&form.items&&form.items.length;
   document.getElementById('customBox').style.display=(!itemised&&form.mode==='custom')?'block':'none';
   document.getElementById('ratioBox').style.display=(!itemised&&(form.mode==='percent'||form.mode==='shares'))?'block':'none';
@@ -2162,6 +2462,45 @@ function checkPresetForm(){
     });
     el.textContent=sum>0?'Works out as '+parts.join(', '):'Give at least one person a share.';
   }
+}
+function drawSettingsCards(){
+  var box=document.getElementById('cardRows'); box.innerHTML='';
+  var cards=state.cards||[];
+  if(!cards.length){ box.innerHTML='<div class="empty">No gift cards yet.</div>'; return; }
+  cards.forEach(function(c){
+    var row=document.createElement('div'); row.className='card-row';
+    row.innerHTML='<div class="card-body"><div class="card-name">'+esc(c.name)+
+      (c.active===false?' <span class="itemtag">retired</span>':'')+'</div>'+
+      '<div class="card-sub">'+esc(c.owner?memberById(c.owner).name+' holds it':'nobody assigned')+
+      ' · '+money(cardBalance(c.id))+' left</div></div>';
+    var b=document.createElement('button'); b.className='btn small'; b.textContent='Edit';
+    b.onclick=function(){ openCard(c); };
+    row.appendChild(b); box.appendChild(row);
+  });
+}
+var cardForm=null;
+function openCard(c){
+  cardForm = c ? JSON.parse(JSON.stringify(c))
+              : {id:uid('gc'),name:'',owner:me,active:true,isNew:true};
+  document.getElementById('cardTitle').textContent=c?'Edit gift card':'New gift card';
+  document.getElementById('cardName').value=cardForm.name;
+  document.getElementById('cardErr').textContent='';
+  document.getElementById('cardDelete').style.display=c?'block':'none';
+  document.getElementById('cardRetire').style.display=c?'block':'none';
+  document.getElementById('cardRetire').textContent=cardForm.active===false?'Bring back':'Retire';
+  closeSheets();
+  drawCardOwner(); openSheet('sheetCard');
+  setTimeout(function(){ if(!c)document.getElementById('cardName').focus(); },90);
+}
+function drawCardOwner(){
+  var box=document.getElementById('cardOwner'); box.innerHTML='';
+  activeMembers().forEach(function(m){
+    var b=document.createElement('button'); b.type='button';
+    b.className='chip'+(cardForm.owner===m.id?' on':'');
+    b.textContent=m.name;
+    b.onclick=function(){ cardForm.owner=m.id; drawCardOwner(); };
+    box.appendChild(b);
+  });
 }
 function drawSettingsPresets(){
   var box=document.getElementById('presetRows'); box.innerHTML='';
@@ -3133,7 +3472,7 @@ function openSettings(){
     tog.onclick=function(){m.active=(m.active===false);openSettings();};
     row.appendChild(idx);row.appendChild(inp);row.appendChild(tog);box.appendChild(row);
   });
-  drawSettingsTemplates(); drawSettingsPresets();
+  drawSettingsTemplates(); drawSettingsPresets(); drawSettingsCards();
   drawNotify(); drawDev();
   document.getElementById('ocrUrl').value=state.ocrUrl||localStorage.getItem(LS_OCR)||'';
   document.getElementById('fbConfig').value=localStorage.getItem(LS_FB)||'';
@@ -3144,10 +3483,12 @@ function openSettings(){
 
 /* ---------- export ---------- */
 function buildCSV(){
-  var rows=[['Date','Status','Type','Description','Note','Category','Split','Amount (£)','Paid by','Added by','Deleted by'].concat(state.members.map(function(m){return m.name+' owes (£)';}))];
+  var rows=[['Date','Status','Type','Description','Note','Category','Split','Amount (£)','Paid by','Gift card','Added by','Deleted by'].concat(state.members.map(function(m){return m.name+' owes (£)';}))];
   entryList().slice().reverse().forEach(function(e){
     var r=[e.date,e.voided?'deleted':(e.status||'active'),e.type,(e.desc||'').replace(/"/g,"'"),(e.note||'').replace(/"/g,"'"),
-      e.category||'',e.splitMode||'equal',plain(e.amount),memberById(e.paidBy).name,
+      e.category||'',e.splitMode||'equal',plain(e.amount),
+      e.cardSpend?('(card) '+cardById(e.cardId).name):memberById(e.paidBy).name,
+      e.cardId?cardById(e.cardId).name+(e.cardTopup?' top-up':' spend'):'',
       e.addedBy?memberById(e.addedBy).name:'',e.voidedBy?memberById(e.voidedBy).name:''];
     state.members.forEach(function(m){r.push(plain((e.shares&&e.shares[m.id])||0));});
     rows.push(r);
@@ -3194,6 +3535,8 @@ function copyCSV(){
 /* ---------- wiring ---------- */
 function wire(){
   document.getElementById('scrim').onclick=function(){askCb=null;closeSheets();};
+  document.getElementById('pickScrim').onclick=closeCardPick;
+  document.getElementById('cardPickClose').onclick=closeCardPick;
   document.getElementById('askYes').onclick=function(){askDone(true);};
   document.getElementById('askNo').onclick=function(){askDone(false);};
   Array.prototype.forEach.call(document.querySelectorAll('[data-close]'),function(b){b.onclick=closeSheets;});
@@ -3285,7 +3628,14 @@ function wire(){
     if(form.mode==='custom')checkRemainder();
     if(form.mode==='percent'||form.mode==='shares')refreshRatio();
     if(form.mode==='items')refreshItemTotals();
+    if(form.payCard)drawSplitDetail();
+    if(form.topupCard){ if(document.getElementById('cardOff').value.trim())worthFromOff(); else drawTopup(); }
   };
+  document.getElementById('cardWorth').oninput=function(){
+    document.getElementById('cardOff').value='';   // typed a value, so the % is stale
+    drawTopup();
+  };
+  document.getElementById('cardOff').oninput=worthFromOff;
 
   document.getElementById('applyAll').onchange=function(){
     var sel=document.getElementById('applyAll'), ps=null;
@@ -3334,11 +3684,43 @@ function wire(){
     var err=document.getElementById('expErr'); err.textContent='';
     var amt=toPence(document.getElementById('amount').value);
     if(isNaN(amt)||amt<=0){err.textContent='Enter an amount above zero.';return;}
+    if((document.getElementById('date').value||today())>today()){
+      err.textContent='That date is in the future — pick today or earlier.';return;}
+
+    /* Spending from a card: the real price is recorded so the card balance is
+       right and the receipt still makes sense, but it settles nothing between
+       people, so there are no shares. */
+    if(form.payCard){
+      var card=cardById(form.payCard);
+      var prevC=form.editingId?state.entries[form.editingId]:null;
+      var ce={id:form.editingId||uid('e'),type:'expense',
+        desc:document.getElementById('desc').value.trim()||card.name,
+        note:document.getElementById('note').value.trim(),
+        category:form.cat,amount:amt,paidBy:null,shares:{},
+        cardSpend:true,cardId:form.payCard,
+        date:document.getElementById('date').value||today(),
+        createdAt:form.createdAt||Date.now(),
+        addedBy:(prevC&&prevC.addedBy)||me};
+      if(form.editingId){ce.editedBy=me;ce.editedAt=Date.now();}
+      if(form.photo)ce.hasPhoto=true;
+      var cPhoto=form.photoChanged?form.photo:null, cDropped=(form.photoChanged&&!form.photo);
+
+      var left=cardBalance(form.payCard)-(prevC&&prevC.cardSpend?-prevC.amount:0);
+      if(amt>left){
+        ask({title:'More than the card holds',
+             message:card.name+' has '+money(left)+' on it and this is '+money(amt)+
+                     '. Save it anyway and the card goes into the red, which usually means a top-up is missing.',
+             okLabel:'Save anyway', cancelLabel:'Back', danger:true},
+            function(v,ok){ if(ok){ closeSheets(); commitExpense(ce,cPhoto,cDropped); } });
+        return;
+      }
+      closeSheets(); commitExpense(ce,cPhoto,cDropped);
+      return;
+    }
+
     if(!form.paidBy){err.textContent='Pick who paid.';return;}
     var ids=activeMembers().filter(function(m){return form.split[m.id];}).map(function(m){return m.id;});
     if(!ids.length){err.textContent='Pick at least one person to split between.';return;}
-    if((document.getElementById('date').value||today())>today()){
-      err.textContent='That date is in the future — pick today or earlier.';return;}
     var shares, weights=null;
     if(form.mode==='items'&&form.items&&form.items.length){
       // an untouched blank line is just an unused row, not an error
@@ -3391,6 +3773,14 @@ function wire(){
       });
       e.adjustMode=form.adjustMode||'proportional';
     } else { delete e.items; delete e.adjustMode; }
+    if(form.topupCard){
+      e.cardTopup=true; e.cardId=form.topupCard;
+      var wTxt=document.getElementById('cardWorth').value.trim();
+      var worth=wTxt===''?amt:toPence(wTxt);
+      if(isNaN(worth)||worth<0){ err.textContent='Value on the card does not look like an amount.'; return; }
+      if(worth<amt){ err.textContent='The card cannot be worth less than you paid for it \u2014 check the value.'; return; }
+      e.cardValue=worth;
+    } else { delete e.cardTopup; delete e.cardValue; }
     if(form.tplId){e.templateId=form.tplId;e.period=form.period||thisPeriod();}
 
 
@@ -3470,6 +3860,36 @@ function wire(){
     tourAt++; tourShow();
   };
   document.getElementById('helpClose').onclick=function(){closeSheets();openSettings();};
+  document.getElementById('addCard').onclick=function(){openCard(null);};
+  document.getElementById('cardClose').onclick=function(){closeSheets();openSettings();};
+  document.getElementById('cardSave').onclick=function(){
+    var err=document.getElementById('cardErr'); err.textContent='';
+    var nm=document.getElementById('cardName').value.trim();
+    if(!nm){err.textContent='Give the card a name.';return;}
+    var rec={id:cardForm.id,name:nm,owner:cardForm.owner||null,active:cardForm.active!==false};
+    if(cardForm.isNew)state.cards.push(rec);
+    else state.cards=state.cards.map(function(x){return x.id===rec.id?rec:x;});
+    pushMeta(); render(); closeSheets(); openSettings();
+  };
+  document.getElementById('cardRetire').onclick=function(){
+    cardForm.active=(cardForm.active===false);
+    state.cards=state.cards.map(function(x){return x.id===cardForm.id?
+      Object.assign({},x,{active:cardForm.active}):x;});
+    pushMeta(); render(); closeSheets(); openSettings();
+  };
+  document.getElementById('cardDelete').onclick=function(){
+    var id=cardForm.id, nm=cardForm.name||'this card';
+    var used=entryList().some(function(e){return e.cardId===id&&!e.voided;});
+    ask({title:'Delete '+nm+'?',
+         message:used?'Top-ups and spending already logged against it stay in the ledger, but the running balance goes.'
+                     :'Nothing has been logged against it yet.',
+         okLabel:'Delete', danger:true},
+        function(v,ok){
+          if(!ok){ openCard(state.cards.filter(function(x){return x.id===id;})[0]); return; }
+          state.cards=state.cards.filter(function(x){return x.id!==id;});
+          pushMeta(); render(); openSettings();
+        });
+  };
   document.getElementById('addPreset').onclick=function(){openPreset(null);};
   document.getElementById('psClose').onclick=function(){closeSheets();openSettings();};
   document.getElementById('psModePercent').onclick=function(){psForm.mode='percent';psForm.weights={};drawPresetForm();};
