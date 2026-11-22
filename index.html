@@ -837,6 +837,9 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
       <label class="label" style="margin-top:12px" for="vapidKey">Web push key</label>
       <input class="input" id="vapidKey" type="text" placeholder="Paste the key pair from Firebase → Cloud Messaging" autocomplete="off">
       <p class="hint">Set once by one person; it reaches everyone else automatically.</p>
+      <label class="label" style="margin-top:12px" for="notifyUrl">Notification sender</label>
+      <input class="input" id="notifyUrl" type="url" placeholder="https://flat-notify.yourname.workers.dev" autocomplete="off">
+      <p class="hint">The Worker that sends the pushes. Blank means no live notifications — the monthly reminder still runs.</p>
     </div>
   </div>
 
@@ -886,6 +889,7 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 
 var LS='flatledger:v2', LS_ME='flatledger:me', LS_FB='flatledger:fb', LS_ROOM='flatledger:room',
     LS_OUT='flatledger:outbox', LS_OCR='flatledger:ocr', LS_VAPID='flatledger:vapid',
+    LS_NOTIFY='flatledger:notifyurl',
     LS_DEV='flatledger:dev', LS_MESET='flatledger:meset', LS_DEVICE='flatledger:device',
     LS_TOKEN='flatledger:token', LS_TOUR='flatledger:tour';
 var CATS=['Rent','Bills','Groceries','Eating out','Household','Transport','Other'];
@@ -1131,6 +1135,7 @@ function blank(){
     presets:[{id:'ps1',name:'Food shop',mode:'percent',weights:{m1:40,m2:20,m3:20,m4:20}}],
     cards:[],
     ocrUrl:'',
+    notifyUrl:'',
     vapid:'',
     entries:{}
   };
@@ -1144,6 +1149,7 @@ function normalise(d){
   d.presets=Array.isArray(d.presets)?d.presets:[];
   d.cards=Array.isArray(d.cards)?d.cards:[];
   d.ocrUrl=typeof d.ocrUrl==='string'?d.ocrUrl:'';
+  d.notifyUrl=typeof d.notifyUrl==='string'?d.notifyUrl:'';
   d.vapid=typeof d.vapid==='string'?d.vapid:'';
   if(!d.entries||typeof d.entries!=='object')d.entries={};
   d.templates.forEach(function(t){if(!t.split||typeof t.split!=='object')t.split={};});
@@ -1185,6 +1191,7 @@ function flush(){
   else if(job.kind==='delete') op=fbRefs.remove(fbRefs.child(fbRefs.entries,job.id));
   else if(job.kind==='photo')  op=fbRefs.set(fbRefs.child(fbRefs.photos,job.id),job.payload);
   else if(job.kind==='photodel')op=fbRefs.remove(fbRefs.child(fbRefs.photos,job.id));
+  else if(job.kind==='notify') op=sendNotify(job.id);
   else { outbox.shift(); saveOutbox(); flushing=false; return flush(); }
 
   op.then(function(){
@@ -1208,6 +1215,25 @@ function flush(){
     }
     saveOutbox(); flushing=false; renderSync(); scheduleFlush();
   });
+}
+/* The Cloud Function used to do this, triggered by the write itself. Without
+   a billing account there is no function, so the phone that logged the entry
+   asks a Worker to send the pushes. It goes through the outbox like any other
+   change, so a lost signal means a retry rather than a silence. */
+function sendNotify(id){
+  var url=(state.notifyUrl||localStorage.getItem(LS_NOTIFY)||'').trim();
+  var room=(localStorage.getItem(LS_ROOM)||'').trim();
+  if(!url||!room)return Promise.resolve();        // not set up: nothing to do, don't queue forever
+  return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({room:room,id:id})})
+    .then(function(r){
+      if(r.ok)return;
+      // 404 means the entry hasn't reached the database yet — worth another go.
+      if(r.status===404)throw new Error('notify: entry not there yet');
+      // Any other 4xx is a request that will never work; don't jam the queue.
+      if(r.status<500)return;
+      throw new Error('notify '+r.status);
+    });
 }
 function scheduleFlush(){
   if(flushTimer||!outbox.length)return;
@@ -1242,11 +1268,16 @@ function pushMeta(){
   }
   enqueue({kind:'meta',payload:{flatName:state.flatName,members:state.members,
     templates:state.templates,presets:state.presets,cards:state.cards||[],
-    ocrUrl:state.ocrUrl||'',vapid:state.vapid||''}});
+    ocrUrl:state.ocrUrl||'',notifyUrl:state.notifyUrl||'',vapid:state.vapid||''}});
 }
 function pushEntry(e){
   state.entries[e.id]=e; saveLocal(); render();
   enqueue({kind:'entry',id:e.id,payload:e});
+  /* The Worker reads the entry back and decides for itself whether it is
+     worth announcing, so an edit or a deletion costs one request and tells
+     nobody. It also keeps a marker per entry, so the same thing is never
+     announced twice however many devices ask. */
+  enqueue({kind:'notify',id:e.id});
 }
 function voidEntry(id,reason){
   var e=state.entries[id]; if(!e)return;
@@ -1456,11 +1487,13 @@ async function connect(){
       state.presets=Array.isArray(v.presets)?v.presets:[];
       state.cards=Array.isArray(v.cards)?v.cards:[];
       state.ocrUrl=typeof v.ocrUrl==='string'?v.ocrUrl:'';
+      state.notifyUrl=typeof v.notifyUrl==='string'?v.notifyUrl:'';
       state.vapid=typeof v.vapid==='string'?v.vapid:'';
       try{ localStorage.setItem(LS_VAPID,state.vapid); }catch(e){}
       // Mirror it locally so the shared value always wins — including when
       // someone clears it, which must reach phones that had an older copy.
       try{ localStorage.setItem(LS_OCR,state.ocrUrl); }catch(e){}
+      try{ localStorage.setItem(LS_NOTIFY,state.notifyUrl); }catch(e){}
       saveLocal(); render();
       drawReadButton();          // a URL arriving from another phone reveals the button
       resumeNotify();            // the push key may only have arrived just now
@@ -3475,6 +3508,7 @@ function openSettings(){
   drawSettingsTemplates(); drawSettingsPresets(); drawSettingsCards();
   drawNotify(); drawDev();
   document.getElementById('ocrUrl').value=state.ocrUrl||localStorage.getItem(LS_OCR)||'';
+  document.getElementById('notifyUrl').value=state.notifyUrl||localStorage.getItem(LS_NOTIFY)||'';
   document.getElementById('fbConfig').value=localStorage.getItem(LS_FB)||'';
   document.getElementById('roomCode').value=localStorage.getItem(LS_ROOM)||'';
   document.getElementById('setErr').textContent='';
@@ -3978,6 +4012,12 @@ function wire(){
         document.getElementById('setErr').textContent='The reader address must start with https://';return;}
       state.ocrUrl=ocr;                       // goes out with the rest of the flat settings
       try{ localStorage.setItem(LS_OCR,ocr); }catch(e){}   // so it still works before sync
+
+      var nurl=document.getElementById('notifyUrl').value.trim().replace(/\/+$/,'');
+      if(nurl&&!/^https:\/\/\S+$/.test(nurl)){
+        document.getElementById('setErr').textContent='The notification address must start with https://';return;}
+      state.notifyUrl=nurl;
+      try{ localStorage.setItem(LS_NOTIFY,nurl); }catch(e){}
     }
 
     if(devMode||joining){
