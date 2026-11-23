@@ -1401,10 +1401,16 @@ function cancelPayment(id){
    Entries from before authorship was recorded fall back to who paid, otherwise
    they would belong to nobody. */
 function ownerOf(e){ return e.addedBy || e.paidBy; }
-function canEdit(e){
+function ownsEntry(e){
   if(e.type==='payment') return e.paidBy===me || !!(e.shares&&e.shares[me]);
   return ownerOf(e)===me;
 }
+/* Developer mode overrides all of it. Somebody has to be able to fix a wrong
+   entry when whoever logged it is asleep or has lost their phone. It is not a
+   quiet override: the entry keeps its original author, the change is stamped
+   with who made it, and the action sheet says whose entry it is. */
+function canEdit(e){ return ownsEntry(e) || devMode; }
+function borrowedRights(e){ return devMode && !ownsEntry(e); }
 function doConfirm(id){
   var e=state.entries[id]; if(!e)return;
   e.status='confirmed'; e.confirmedBy=me; e.confirmedAt=Date.now();
@@ -1995,6 +2001,12 @@ function openActions(e){
           function(why,ok){ if(ok)declinePayment(e.id,why); });
     });
   } else {
+    if(borrowedRights(e)){
+      var dn=document.createElement('p'); dn.className='hint'; dn.style.margin='4px 0 0';
+      dn.innerHTML='<b>Developer mode.</b> This is '+esc(memberById(ownerOf(e)).name)+
+        '\u2019s entry \u2014 it stays in their name, and the ledger will show you changed it.';
+      box.appendChild(dn);
+    }
     if(!isPay&&e.items&&e.items.length){
       btn('See the items','Who was charged for what','',function(){openBreakdown(e);});
     }
