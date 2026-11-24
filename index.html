@@ -2940,20 +2940,35 @@ function readReceipt(){
   var url=ocrUrl(), btn=document.getElementById('readBtn'), out=document.getElementById('readOut');
   if(!url||!form.photo)return;
   btn.disabled=true; btn.textContent='Reading\u2026';
-  out.className='read-out show'; out.innerHTML='<div class="read-line"><span class="k">Working on it\u2026</span></div>';
+  out.className='read-out show';
 
-  var done=false;
+  /* A still "Working on it..." for thirty seconds looks broken, and the old
+     thirty-second cut-off was shorter than a slow read, so a request that was
+     about to succeed was thrown away. The Worker now gives up at about
+     twenty-two seconds on its own and says why, so this is only here to catch
+     a request that never reaches it at all. */
+  var done=false, began=Date.now(), ticker=null;
+  function tick(){
+    if(done)return;
+    var secs=Math.round((Date.now()-began)/1000);
+    out.innerHTML='<div class="read-line"><span class="k">Reading the receipt\u2026</span>'+
+      '<span class="v">'+secs+'s</span></div>';
+  }
+  tick(); ticker=setInterval(tick,1000);
+  function stop(){ done=true; clearInterval(ticker); clearTimeout(timer); }
+
   var timer=setTimeout(function(){
-    if(done)return; done=true;
+    if(done)return; stop();
     btn.disabled=false; btn.textContent='Read the receipt';
-    out.innerHTML='<div class="read-line"><span class="k">No answer in 30 seconds. Try again, or just type it in.</span></div>';
-  },30000);
+    out.innerHTML='<div class="read-line"><span class="k">The reader never answered. '+
+      'Check the address in Settings, or type it in.</span></div>';
+  },45000);
 
   fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({image:form.photo})})
   .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,status:r.status,body:j}; }); })
   .then(function(res){
-    if(done)return; done=true; clearTimeout(timer);
+    if(done)return; stop();
     btn.disabled=false; btn.textContent='Read it again';
     if(!res.ok||res.body.error){
       out.innerHTML='<div class="read-line"><span class="k">'+
@@ -2963,7 +2978,7 @@ function readReceipt(){
     showReadResult(res.body);
   })
   .catch(function(){
-    if(done)return; done=true; clearTimeout(timer);
+    if(done)return; stop();
     btn.disabled=false; btn.textContent='Read the receipt';
     out.innerHTML='<div class="read-line"><span class="k">Could not reach the reader. Check the address in Settings, or that you are online.</span></div>';
   });
@@ -2995,6 +3010,12 @@ function showReadResult(r){
       var el=document.getElementById('date'); el.value=r.date; capDate('date');
     });
 
+  if(devMode&&(r.model||r.ms!=null)){
+    var dl=document.createElement('div'); dl.className='read-line';
+    dl.innerHTML='<span class="k">'+esc(r.model||'model')+'</span><span class="v">'+
+      (r.ms!=null?(Math.round(r.ms/100)/10)+'s':'')+'</span>';
+    out.appendChild(dl);
+  }
   if(r.items&&r.items.length){
     var line=document.createElement('div'); line.className='read-line';
     line.innerHTML='<span class="k">'+r.items.length+' items read</span>'+
