@@ -3,17 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#EDEEE9">
+<meta name="theme-color" content="#E9EAE4">
 <script>
   /* Before the stylesheet paints, so a dark phone never flashes a cream
      screen. The full theme code lives with the rest of the app below; this
      only has to set the attribute. */
   try{
     var t=localStorage.getItem('flatledger:theme');
-    if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);
     var dark=(t==='dark')||(t!=='light'&&window.matchMedia&&
              window.matchMedia('(prefers-color-scheme: dark)').matches);
-    if(dark)document.querySelector('meta[name="theme-color"]').setAttribute('content','#111418');
+    // The attribute always holds a real theme, never "auto", so the stylesheet
+    // needs one dark block rather than one per way of arriving at it.
+    document.documentElement.setAttribute('data-theme',dark?'dark':'light');
+    if(dark)document.querySelector('meta[name="theme-color"]').setAttribute('content','#171A1F');
   }catch(e){}
 </script>
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -28,19 +30,22 @@
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;800&family=JetBrains+Mono:wght@400;600;800&display=swap" rel="stylesheet">
 <style>
 :root{
-  --paper:#EDEEE9; --card:#FFFFFF; --ink:#141A1F; --ink-soft:#3D464E;
-  --muted:#626A72; --line:#D9DCD4; --line-soft:#E7E9E2;
-  --blue:#1F4FD8; --blue-wash:#E6EBFB; --red:#B3271A; --red-wash:#F8E7E4;
-  --amber:#8A5A0B; --amber-wash:#FBF0DA;
+  /* Softened on purpose. Pure white cards under near-black text measured
+     17:1, which is glare rather than clarity. The card is now an off-white
+     and the ink a charcoal; everything still clears 4.5:1. */
+  --paper:#E9EAE4; --card:#F8F8F4; --ink:#282F36; --ink-soft:#4E575F;
+  --muted:#626A72; --line:#D7D9D1; --line-soft:#E4E5DF;
+  --blue:#2B55C7; --blue-wash:#E8ECFA; --red:#A8372A; --red-wash:#F6E8E5;
+  --amber:#8A6118; --amber-wash:#F8F0DD;
   /* Text that sits ON a filled button. --ink is a background as well as a
      text colour, so in dark mode these have to swap or a primary button is
      white on white. */
-  --on-ink:#FFFFFF; --on-blue:#FFFFFF; --on-amber:#FFFFFF;
-  --wash-blue-line:#C9D6F7; --wash-amber-line:#EEDDB6; --wash-red-line:#EFD3CE;
-  --scrim:rgba(20,26,31,.42); --dim:rgba(20,26,31,.55);
-  --hair:rgba(20,26,31,.12);
-  --shadow-fab:0 6px 20px rgba(20,26,31,.22);
-  --shadow-tour:0 10px 34px rgba(20,26,31,.34);
+  --on-ink:#F8F8F4; --on-blue:#F4F6FD; --on-amber:#FBF6EC;
+  --wash-blue-line:#CCD7F3; --wash-amber-line:#E9DCBC; --wash-red-line:#ECD5D0;
+  --scrim:rgba(20,26,31,.34); --dim:rgba(20,26,31,.46);
+  --hair:rgba(40,47,54,.11);
+  --shadow-fab:0 6px 18px rgba(20,26,31,.16);
+  --shadow-tour:0 10px 30px rgba(20,26,31,.26);
   --display:'Archivo','Helvetica Neue',Arial,sans-serif;
   --mono:'JetBrains Mono',ui-monospace,'SF Mono','Roboto Mono',monospace;
   --safe-b:env(safe-area-inset-bottom,0px);
@@ -48,37 +53,23 @@
 }
 
 /* ---------- dark ----------
-   Follows the phone unless Settings says otherwise, so data-theme="light"
-   wins over the system preference and data-theme="dark" forces it on.
-   The accent colours are lifted: #1F4FD8 on a near-black card is unreadable,
-   so blue, red and amber all move up in lightness and their text colour
-   flips to dark. */
-@media (prefers-color-scheme: dark){
-  :root:not([data-theme="light"]){
-    --paper:#111418; --card:#1A1E24; --ink:#ECEFF2; --ink-soft:#BAC2CA;
-    --muted:#8C949E; --line:#2E343C; --line-soft:#242A31;
-    --blue:#7FA0FF; --blue-wash:#1B2435; --red:#FF9382; --red-wash:#331F1C;
-    --amber:#E3AC56; --amber-wash:#2C2516;
-    --on-ink:#111418; --on-blue:#0E1526; --on-amber:#2A1F08;
-    --wash-blue-line:#2C3A5C; --wash-amber-line:#4A3C1C; --wash-red-line:#4C2B26;
-    --scrim:rgba(0,0,0,.6); --dim:rgba(0,0,0,.72);
-    --hair:rgba(236,239,242,.14);
-    --shadow-fab:0 6px 20px rgba(0,0,0,.5);
-    --shadow-tour:0 10px 34px rgba(0,0,0,.55);
-    color-scheme:dark;
-  }
-}
+   Written once. The script at the top of the page resolves "match phone" to
+   an actual value before the first paint, so this is the only dark block and
+   there is no second copy to forget about.
+   Not pure black under near-white either: that pairing is the hardest to read
+   at night. The page lifts off black, the card lifts off the page, and the
+   text stops short of white. */
 :root[data-theme="dark"]{
-  --paper:#111418; --card:#1A1E24; --ink:#ECEFF2; --ink-soft:#BAC2CA;
-  --muted:#8C949E; --line:#2E343C; --line-soft:#242A31;
-  --blue:#7FA0FF; --blue-wash:#1B2435; --red:#FF9382; --red-wash:#331F1C;
-  --amber:#E3AC56; --amber-wash:#2C2516;
-  --on-ink:#111418; --on-blue:#0E1526; --on-amber:#2A1F08;
-  --wash-blue-line:#2C3A5C; --wash-amber-line:#4A3C1C; --wash-red-line:#4C2B26;
-  --scrim:rgba(0,0,0,.6); --dim:rgba(0,0,0,.72);
-  --hair:rgba(236,239,242,.14);
-  --shadow-fab:0 6px 20px rgba(0,0,0,.5);
-  --shadow-tour:0 10px 34px rgba(0,0,0,.55);
+  --paper:#171A1F; --card:#20242A; --ink:#D4D9DE; --ink-soft:#A9B2BB;
+  --muted:#858D96; --line:#333A42; --line-soft:#272C33;
+  --blue:#8AA4EE; --blue-wash:#1E2739; --red:#E89385; --red-wash:#36221F;
+  --amber:#D0A864; --amber-wash:#2F2819;
+  --on-ink:#171A1F; --on-blue:#121829; --on-amber:#231B0B;
+  --wash-blue-line:#303C5C; --wash-amber-line:#4A3E22; --wash-red-line:#4A2E29;
+  --scrim:rgba(0,0,0,.55); --dim:rgba(0,0,0,.66);
+  --hair:rgba(212,217,222,.13);
+  --shadow-fab:0 6px 18px rgba(0,0,0,.42);
+  --shadow-tour:0 10px 30px rgba(0,0,0,.46);
   color-scheme:dark;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -2356,13 +2347,13 @@ function darkNow(){
   return !!(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);
 }
 function applyTheme(){
-  var p=themePref();
-  if(p==='auto')document.documentElement.removeAttribute('data-theme');
-  else document.documentElement.setAttribute('data-theme',p);
+  // Resolve "match phone" here so the attribute is always light or dark.
+  var dark=darkNow();
+  document.documentElement.setAttribute('data-theme',dark?'dark':'light');
   // The browser chrome and the Android task switcher read this, so a dark app
   // under a cream status bar looks broken until this changes too.
   var m=document.querySelector('meta[name="theme-color"]');
-  if(m)m.setAttribute('content',darkNow()?'#111418':'#EDEEE9');
+  if(m)m.setAttribute('content',dark?'#171A1F':'#E9EAE4');
 }
 function setTheme(p){
   try{ localStorage.setItem(LS_THEME,p); }catch(e){}
