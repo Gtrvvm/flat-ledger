@@ -3095,7 +3095,15 @@ function readReceipt(){
     btn.disabled=false; btn.textContent='Read it again';
     if(!res.ok||res.body.error){
       out.innerHTML='<div class="read-line"><span class="k">'+
-        esc(res.body.error||('Reader returned '+res.status))+'</span></div>';
+        esc(res.body.error||('Reader returned '+res.status))+'</span></div>'+
+        /* The Worker sends back the status and Google's own words. Throwing
+           them away left "the reader failed" as the whole story, which is no
+           use to anyone trying to fix it. */
+        (devMode&&(res.body.status||res.body.detail)
+          ? '<div class="read-line"><span class="k">'+esc(String(res.body.status||res.status))+'</span>'+
+            '<span class="v" style="font-size:11px;text-align:right;max-width:60%">'+
+            esc(String(res.body.detail||'').slice(0,200))+'</span></div>'
+          : '');
       return;
     }
     showReadResult(res.body);
