@@ -4,6 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#EDEEE9">
+<script>
+  /* Before the stylesheet paints, so a dark phone never flashes a cream
+     screen. The full theme code lives with the rest of the app below; this
+     only has to set the attribute. */
+  try{
+    var t=localStorage.getItem('flatledger:theme');
+    if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);
+    var dark=(t==='dark')||(t!=='light'&&window.matchMedia&&
+             window.matchMedia('(prefers-color-scheme: dark)').matches);
+    if(dark)document.querySelector('meta[name="theme-color"]').setAttribute('content','#111418');
+  }catch(e){}
+</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Flat Ledger">
@@ -17,12 +29,57 @@
 <style>
 :root{
   --paper:#EDEEE9; --card:#FFFFFF; --ink:#141A1F; --ink-soft:#3D464E;
-  --muted:#79818A; --line:#D9DCD4; --line-soft:#E7E9E2;
+  --muted:#626A72; --line:#D9DCD4; --line-soft:#E7E9E2;
   --blue:#1F4FD8; --blue-wash:#E6EBFB; --red:#B3271A; --red-wash:#F8E7E4;
   --amber:#8A5A0B; --amber-wash:#FBF0DA;
+  /* Text that sits ON a filled button. --ink is a background as well as a
+     text colour, so in dark mode these have to swap or a primary button is
+     white on white. */
+  --on-ink:#FFFFFF; --on-blue:#FFFFFF; --on-amber:#FFFFFF;
+  --wash-blue-line:#C9D6F7; --wash-amber-line:#EEDDB6; --wash-red-line:#EFD3CE;
+  --scrim:rgba(20,26,31,.42); --dim:rgba(20,26,31,.55);
+  --hair:rgba(20,26,31,.12);
+  --shadow-fab:0 6px 20px rgba(20,26,31,.22);
+  --shadow-tour:0 10px 34px rgba(20,26,31,.34);
   --display:'Archivo','Helvetica Neue',Arial,sans-serif;
   --mono:'JetBrains Mono',ui-monospace,'SF Mono','Roboto Mono',monospace;
   --safe-b:env(safe-area-inset-bottom,0px);
+  color-scheme:light;
+}
+
+/* ---------- dark ----------
+   Follows the phone unless Settings says otherwise, so data-theme="light"
+   wins over the system preference and data-theme="dark" forces it on.
+   The accent colours are lifted: #1F4FD8 on a near-black card is unreadable,
+   so blue, red and amber all move up in lightness and their text colour
+   flips to dark. */
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#111418; --card:#1A1E24; --ink:#ECEFF2; --ink-soft:#BAC2CA;
+    --muted:#8C949E; --line:#2E343C; --line-soft:#242A31;
+    --blue:#7FA0FF; --blue-wash:#1B2435; --red:#FF9382; --red-wash:#331F1C;
+    --amber:#E3AC56; --amber-wash:#2C2516;
+    --on-ink:#111418; --on-blue:#0E1526; --on-amber:#2A1F08;
+    --wash-blue-line:#2C3A5C; --wash-amber-line:#4A3C1C; --wash-red-line:#4C2B26;
+    --scrim:rgba(0,0,0,.6); --dim:rgba(0,0,0,.72);
+    --hair:rgba(236,239,242,.14);
+    --shadow-fab:0 6px 20px rgba(0,0,0,.5);
+    --shadow-tour:0 10px 34px rgba(0,0,0,.55);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#111418; --card:#1A1E24; --ink:#ECEFF2; --ink-soft:#BAC2CA;
+  --muted:#8C949E; --line:#2E343C; --line-soft:#242A31;
+  --blue:#7FA0FF; --blue-wash:#1B2435; --red:#FF9382; --red-wash:#331F1C;
+  --amber:#E3AC56; --amber-wash:#2C2516;
+  --on-ink:#111418; --on-blue:#0E1526; --on-amber:#2A1F08;
+  --wash-blue-line:#2C3A5C; --wash-amber-line:#4A3C1C; --wash-red-line:#4C2B26;
+  --scrim:rgba(0,0,0,.6); --dim:rgba(0,0,0,.72);
+  --hair:rgba(236,239,242,.14);
+  --shadow-fab:0 6px 20px rgba(0,0,0,.5);
+  --shadow-tour:0 10px 34px rgba(0,0,0,.55);
+  color-scheme:dark;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0}
@@ -110,12 +167,12 @@ h1.title{font-size:30px;font-weight:800;letter-spacing:-.03em;margin:4px 0 0;lin
 
 .btn{font-family:var(--display);font-size:13px;font-weight:600;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:8px 12px;cursor:pointer;transition:background .12s}
 .btn:hover{background:var(--paper)}
-.btn.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+.btn.primary{background:var(--ink);color:var(--on-ink);border-color:var(--ink)}
 .btn.small{font-size:11px;padding:6px 9px}
 .btn:focus-visible,.chip:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 
 .fab{position:fixed;left:50%;bottom:calc(16px + var(--safe-b));transform:translateX(-50%);z-index:40;width:calc(100% - 32px);max-width:560px;display:flex;gap:8px}
-.fab button{flex:1;font-family:var(--display);font-size:15px;font-weight:700;padding:14px;border-radius:12px;border:0;cursor:pointer;background:var(--ink);color:#fff;box-shadow:0 6px 20px rgba(20,26,31,.22)}
+.fab button{flex:1;font-family:var(--display);font-size:15px;font-weight:700;padding:14px;border-radius:12px;border:0;cursor:pointer;background:var(--ink);color:var(--on-ink);box-shadow:var(--shadow-fab)}
 .fab button.ghost{flex:0 0 auto;background:var(--card);color:var(--ink);border:1px solid var(--line);font-size:13px;padding:14px 14px}
 .fab button.icon{flex:0 0 auto;background:var(--card);color:var(--ink);border:1px solid var(--line);
   padding:0;width:52px;display:flex;align-items:center;justify-content:center}
@@ -127,7 +184,7 @@ h1.title{font-size:30px;font-weight:800;letter-spacing:-.03em;margin:4px 0 0;lin
   .fab button.icon{width:46px}
 }
 
-.scrim{position:fixed;inset:0;background:rgba(20,26,31,.42);z-index:50;display:none}
+.scrim{position:fixed;inset:0;background:var(--scrim);z-index:50;display:none}
 .scrim.open{display:block}
 .sheet{position:fixed;left:50%;bottom:0;transform:translateX(-50%);width:100%;max-width:560px;max-height:92vh;overflow-y:auto;background:var(--card);border-radius:18px 18px 0 0;z-index:51;padding:18px 16px calc(26px + var(--safe-b));display:none;animation:up .22s cubic-bezier(.2,.7,.3,1)}
 .sheet.open{display:block}
@@ -147,8 +204,8 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 .amount-wrap input{flex:1;border:0;background:none;outline:none;padding:6px 0 6px 8px;font-family:var(--mono);font-size:30px;font-weight:800;color:var(--ink);letter-spacing:-.02em;font-variant-numeric:tabular-nums;min-width:0}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{font-family:var(--display);font-size:12px;font-weight:600;padding:7px 11px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--ink-soft);cursor:pointer;transition:all .12s}
-.chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
-.chip.split.on{background:var(--blue);border-color:var(--blue);color:#fff}
+.chip.on{background:var(--ink);color:var(--on-ink);border-color:var(--ink)}
+.chip.split.on{background:var(--blue);border-color:var(--blue);color:var(--on-blue)}
 .custom-row{display:flex;align-items:center;gap:8px;margin-bottom:7px}
 .custom-row label{flex:1;font-size:13px;font-weight:600}
 .mini{width:96px;font-family:var(--mono);font-size:14px;text-align:right;border:1px solid var(--line);border-radius:7px;padding:7px 9px;font-variant-numeric:tabular-nums}
@@ -156,9 +213,13 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 .preview{font-family:var(--mono);font-size:12px;color:var(--muted);width:70px;text-align:right;font-variant-numeric:tabular-nums;flex-shrink:0}
 .remainder{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:6px}
 .remainder.bad{color:var(--red)}
-.searchbar{position:relative;margin-bottom:12px}
-.searchbar input{width:100%;font-family:var(--display);font-size:14px;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:9px;padding:10px 34px 10px 12px}
-.searchbar input::placeholder{color:var(--muted)}
+/* Lines from an itemised receipt that matched the search. */
+.hititems{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.hit{display:inline-flex;align-items:baseline;gap:6px;background:var(--amber-wash);
+  border:1px solid var(--wash-amber-line);border-radius:999px;padding:3px 9px;max-width:100%}
+.hit .hn{font-size:11px;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hit .hp{font-family:var(--mono);font-size:11px;font-weight:600;color:var(--amber);flex-shrink:0}
+.hit.more{font-size:11px;color:var(--muted);background:none;border-style:dashed}
 .searchclear{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:0;color:var(--muted);font-family:var(--mono);font-size:14px;cursor:pointer;padding:4px 8px;display:none}
 .searchclear.on{display:block}
 .searchcount{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:-4px 0 10px}
@@ -179,7 +240,7 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 .divider{height:1px;background:var(--line-soft);margin:18px 0}
 .entry{cursor:pointer;transition:background .12s;border-radius:8px;margin:0 -8px;padding-left:8px;padding-right:8px}
 .entry:active{background:var(--paper)}
-.entry .chev{color:var(--line);font-size:16px;align-self:center;flex-shrink:0;margin-left:2px}
+.entry .chev{color:var(--muted);font-size:16px;align-self:center;flex-shrink:0;margin-left:2px}
 .act-head{padding:2px 0 14px;border-bottom:1px solid var(--line-soft);margin-bottom:14px}
 .act-desc{font-size:17px;font-weight:700;letter-spacing:-.02em;word-break:break-word}
 .act-meta{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.5}
@@ -191,8 +252,8 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 .act-btn .sub{display:block;font-size:12px;font-weight:400;color:var(--muted);margin-top:3px}
 .act-btn.danger{color:var(--red);border-color:var(--red-wash);background:var(--red-wash)}
 .act-btn.danger .sub{color:var(--red)}
-.alert{background:var(--blue-wash);border:1px solid #C9D6F7;border-radius:14px;padding:15px 16px;margin-bottom:14px}
-.alert.wait{background:var(--amber-wash);border-color:#EEDDB6}
+.alert{background:var(--blue-wash);border:1px solid var(--wash-blue-line);border-radius:14px;padding:15px 16px;margin-bottom:14px}
+.alert.wait{background:var(--amber-wash);border-color:var(--wash-amber-line)}
 .alert-title{font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--blue);margin-bottom:8px}
 .alert.wait .alert-title{color:var(--amber)}
 .alert-line{font-size:15px;font-weight:600;letter-spacing:-.01em;line-height:1.4}
@@ -200,15 +261,15 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 .alert-sub{font-size:12px;color:var(--ink-soft);margin-top:4px;line-height:1.45}
 .alert-acts{display:flex;gap:8px;margin-top:12px}
 .alert-acts button{flex:1;font-family:var(--display);font-size:14px;font-weight:700;padding:11px;border-radius:9px;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink)}
-.alert-acts button.yes{background:var(--blue);border-color:var(--blue);color:#fff}
-.alert-item{padding:11px 0;border-bottom:1px dashed rgba(20,26,31,.12)}
+.alert-acts button.yes{background:var(--blue);border-color:var(--blue);color:var(--on-blue)}
+.alert-item{padding:11px 0;border-bottom:1px dashed var(--hair)}
 .alert-item:first-of-type{padding-top:0}
 .alert-item:last-child{border-bottom:0;padding-bottom:0}
 .entry.pending{opacity:.62}
 .entry.pending .entry-amt{color:var(--amber)}
 .dirchips{display:flex;gap:8px}
 .dirchips button{flex:1;font-family:var(--display);font-size:14px;font-weight:600;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink-soft);cursor:pointer}
-.dirchips button.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.dirchips button.on{background:var(--ink);border-color:var(--ink);color:var(--on-ink)}
 .entry.void{opacity:.5}
 .entry.void .entry-desc{text-decoration:line-through}
 .entry.void .entry-amt{text-decoration:line-through}
@@ -233,23 +294,23 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
   background:var(--card);border:1px solid var(--line);border-radius:9px;padding:9px 10px}
 .who-chip{font-family:var(--display);font-size:11px;font-weight:600;padding:4px 9px;border-radius:999px;
   border:1px solid var(--line);background:var(--card);color:var(--muted);cursor:pointer}
-.who-chip.on{background:var(--blue);border-color:var(--blue);color:#fff}
+.who-chip.on{background:var(--blue);border-color:var(--blue);color:var(--on-blue)}
 .who-all{font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;
   background:none;border:0;color:var(--muted);cursor:pointer;padding:4px 2px}
 .item-foot{display:flex;justify-content:space-between;align-items:center;gap:10px;
   padding:11px 0 0;margin-top:6px;border-top:1px solid var(--line)}
 .item-foot .k{font-size:12px;color:var(--muted)}
 .item-foot .v{font-family:var(--mono);font-size:13px;font-weight:700;font-variant-numeric:tabular-nums}
-.diff-box{background:var(--amber-wash);border:1px solid #EEDDB6;border-radius:9px;padding:11px;margin-top:10px}
+.diff-box{background:var(--amber-wash);border:1px solid var(--wash-amber-line);border-radius:9px;padding:11px;margin-top:10px}
 .diff-line{font-size:12px;color:var(--ink-soft);line-height:1.5}
 .diff-line strong{font-family:var(--mono);font-weight:700}
-.tour-dim{position:fixed;inset:0;background:rgba(20,26,31,.55);z-index:70;display:none}
+.tour-dim{position:fixed;inset:0;background:var(--dim);z-index:70;display:none}
 .tour-dim.on{display:block}
 .tour-lift{position:relative;z-index:71;border-radius:14px;
-  box-shadow:0 0 0 3px var(--blue),0 0 0 9px rgba(31,79,216,.25)}
+  box-shadow:0 0 0 3px var(--blue),0 0 0 9px var(--blue-wash)}
 .tour-card{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + var(--safe-b));
   width:calc(100% - 32px);max-width:520px;background:var(--card);border-radius:14px;
-  padding:16px;z-index:72;display:none;box-shadow:0 10px 34px rgba(20,26,31,.34)}
+  padding:16px;z-index:72;display:none;box-shadow:var(--shadow-tour)}
 .tour-card.on{display:block}
 .tour-step{font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.16em;
   text-transform:uppercase;color:var(--muted)}
@@ -261,7 +322,7 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 .tour-acts .sp{flex:1}
 .tour-acts button.nav{font-family:var(--display);font-size:14px;font-weight:700;padding:11px 16px;
   border-radius:9px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
-.tour-acts button.nav.go{background:var(--ink);border-color:var(--ink);color:#fff}
+.tour-acts button.nav.go{background:var(--ink);border-color:var(--ink);color:var(--on-ink)}
 .help-sec{border-bottom:1px solid var(--line-soft)}
 .help-sec:last-child{border-bottom:0}
 .help-q{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
@@ -339,9 +400,9 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 .per-net.up{color:var(--blue)} .per-net.down{color:var(--red)}
 .per-row.tappable{cursor:pointer;border-radius:8px;margin:0 -8px;padding-left:8px;padding-right:8px}
 .per-row.tappable:active{background:var(--paper)}
-.per-row .pchev{color:var(--line);font-size:14px;width:12px;text-align:right;flex-shrink:0;
+.per-row .pchev{color:var(--muted);font-size:14px;width:12px;text-align:right;flex-shrink:0;
   transition:transform .15s}
-.per-row.open .pchev{transform:rotate(90deg);color:var(--muted)}
+.per-row.open .pchev{transform:rotate(90deg);color:var(--ink-soft)}
 .per-detail{padding:4px 0 12px 2px;margin-bottom:4px;border-bottom:1px dashed var(--line-soft)}
 .per-detail .pd-row{display:flex;align-items:center;gap:8px;padding:5px 0}
 .per-detail .pd-name{flex:1;font-size:12px;color:var(--ink-soft)}
@@ -384,10 +445,10 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 .worth .pre+.input{padding-left:26px}
 .worth .post{position:absolute;right:11px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:12px}
 .worth .input{font-family:var(--mono);font-size:15px;padding-right:48px}
-.cardnote{background:var(--amber-wash);border:1px solid #EEDDB6;border-radius:9px;padding:11px;
+.cardnote{background:var(--amber-wash);border:1px solid var(--wash-amber-line);border-radius:9px;padding:11px;
   font-size:12px;color:var(--ink-soft);line-height:1.5;margin-top:10px}
 .cardnote b{color:var(--ink)}
-.cardnote.low{background:var(--red-wash);border-color:#EFD3CE;color:var(--red)}
+.cardnote.low{background:var(--red-wash);border-color:var(--wash-red-line);color:var(--red)}
 .card-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px dashed var(--line-soft)}
 .card-row:last-child{border-bottom:0}
 .card-body{flex:1;min-width:0}
@@ -395,7 +456,7 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
 .card-sub{font-size:12px;color:var(--muted);margin-top:2px}
 .card-bal{font-family:var(--mono);font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;flex-shrink:0}
 .card-bal.low{color:var(--red)}
-.chip.pct.on{background:var(--amber);border-color:var(--amber);color:#fff}
+.chip.pct.on{background:var(--amber);border-color:var(--amber);color:var(--on-amber)}
 .pct-row{display:flex;align-items:center;gap:8px;margin-bottom:7px}
 .pct-row label{flex:1;font-size:13px;font-weight:600;min-width:0}
 .pct-row .pctin{width:68px;font-family:var(--mono);font-size:14px;text-align:right;border:1px solid var(--line);border-radius:7px;padding:7px 8px;font-variant-numeric:tabular-nums}
@@ -480,7 +541,7 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
       </div>
       <div class="searchbox">
         <span class="mag" aria-hidden="true">&#128269;</span>
-        <input id="search" type="search" placeholder="Search the ledger…" autocomplete="off" aria-label="Search the ledger">
+        <input id="search" type="search" placeholder="Search — shop, person, or an item…" autocomplete="off" aria-label="Search the ledger, including items on receipts">
         <button class="clear" id="searchClear" style="display:none">CLEAR</button>
       </div>
       <div class="month">
@@ -789,6 +850,11 @@ textarea.input{font-family:var(--mono);font-size:12px;line-height:1.5;min-height
     <button class="btn" id="tourBtn" style="flex:1;padding:12px">Show me around</button>
   </div>
 
+  <div class="field"><span class="label">Appearance</span>
+    <div class="chips" id="themeChips"></div>
+    <p class="hint">This phone only — it is not shared with the flat.</p>
+  </div>
+
   <div class="field"><label class="label" for="flatNameInput">Flat name</label><input class="input" id="flatNameInput" type="text" autocomplete="off"></div>
 
   <div class="field"><span class="label">Flatmates</span>
@@ -895,6 +961,9 @@ var LS='flatledger:v2', LS_ME='flatledger:me', LS_FB='flatledger:fb', LS_ROOM='f
 var CATS=['Rent','Bills','Groceries','Eating out','Household','Transport','Other'];
 
 var state=null, me=null, db=null, fbRefs=null, online=false, suppress=false, searchTerm='', showVoid=false;
+var LS_THEME='flatledger:theme';
+// entry id -> the item lines a search matched, read by the ledger rows
+var searchItems={};
 var outbox=[], flushing=false, flushTimer=null;
 var OUTBOX_ROTATE_AFTER=3;    // move a failing job to the back after this many tries
 var OUTBOX_MAX_TRIES=30;      // and abandon it eventually rather than jamming
@@ -1733,17 +1802,33 @@ function render(){
     bar.appendChild(sp); bar.appendChild(tb); el.appendChild(bar);
   }
   var all=showVoid?everything:everything.filter(function(e){return !e.voided;}), list=all;
+  searchItems={};
   if(searchTerm){
     var q=searchTerm.toLowerCase();
+    var itemTotal=0, itemLines=0;
     list=all.filter(function(e){
       var hay=[e.desc||'',e.note||'',e.category||'',payerName(e),plain(e.amount),e.date||'',
                e.cardId?cardById(e.cardId).name:'']
         .concat(Object.keys(e.shares||{}).map(function(id){return memberById(id).name;})).join(' ').toLowerCase();
-      return hay.indexOf(q)>-1;
+      /* Searching an itemised receipt should find the thing that was bought,
+         not just the shop: "milk" ought to turn up the Sainsbury's trip that
+         had milk on line four. */
+      var hitItems=(e.items||[]).filter(function(it){
+        return String(it.name||'').toLowerCase().indexOf(q)>-1;
+      });
+      if(hitItems.length){
+        searchItems[e.id]=hitItems;
+        if(!e.voided){
+          itemLines+=hitItems.length;
+          hitItems.forEach(function(it){ itemTotal+=it.amount||0; });
+        }
+      }
+      return hay.indexOf(q)>-1||hitItems.length>0;
     });
     var hits=document.createElement('div'); hits.className='daylabel'; hits.style.marginBottom='10px';
     var tot=list.reduce(function(a,e){return a+((e.type==='payment'||e.voided)?0:e.amount);},0);
-    hits.textContent=list.length+' match'+(list.length===1?'':'es')+' · '+money(tot);
+    hits.textContent=list.length+' match'+(list.length===1?'':'es')+' · '+money(tot)+
+      (itemLines?' · '+money(itemTotal)+' on '+itemLines+' matching item'+(itemLines===1?'':'s'):'');
     el.appendChild(hits);
   }
   if(!list.length){
@@ -1900,6 +1985,16 @@ function entryRow(e){
       (e.hasPhoto?'<span class="clip" title="Has a receipt">\uD83D\uDCCE</span>':'')+'</div>'+
     '<div class="entry-sub">'+esc(sub)+'</div>'+
     (e.note?'<div class="entry-note">'+esc(e.note)+'</div>':'')+
+    /* A search that matched a line on the receipt rather than the expense
+       itself has to say so, or the row looks like it has nothing to do with
+       what was typed. */
+    ((searchItems[e.id]||[]).length?'<div class="hititems">'+
+      searchItems[e.id].slice(0,4).map(function(it){
+        return '<span class="hit"><span class="hn">'+esc(it.name)+'</span>'+
+               '<span class="hp">'+money(it.amount)+'</span></span>';
+      }).join('')+
+      (searchItems[e.id].length>4?'<span class="hit more">+'+(searchItems[e.id].length-4)+' more</span>':'')+
+      '</div>':'')+
     (e.addedBy?'<div class="trail">Added by '+esc(memberById(e.addedBy).name)+
       (e.editedBy?' · edited by '+esc(memberById(e.editedBy).name)+' '+stamp(e.editedAt):'')+'</div>':'')+
     (isPending?'<div class="trail del">Waiting for '+
@@ -2246,6 +2341,43 @@ function worthFromOff(){
   if(isNaN(paid)||isNaN(off)||off<=0||off>=100){ drawTopup(); return; }
   document.getElementById('cardWorth').value=plain(Math.round(paid/(1-off/100)));
   drawTopup();
+}
+/* ---------- light and dark ----------
+   A device preference, not a flat one: wanting dark at night is no reason to
+   darken anyone else's phone, so this is the one setting that never goes near
+   Firebase. 'auto' simply follows the phone. */
+function themePref(){
+  try{ var v=localStorage.getItem(LS_THEME); return (v==='light'||v==='dark')?v:'auto'; }
+  catch(e){ return 'auto'; }
+}
+function darkNow(){
+  var p=themePref();
+  if(p!=='auto')return p==='dark';
+  return !!(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);
+}
+function applyTheme(){
+  var p=themePref();
+  if(p==='auto')document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme',p);
+  // The browser chrome and the Android task switcher read this, so a dark app
+  // under a cream status bar looks broken until this changes too.
+  var m=document.querySelector('meta[name="theme-color"]');
+  if(m)m.setAttribute('content',darkNow()?'#111418':'#EDEEE9');
+}
+function setTheme(p){
+  try{ localStorage.setItem(LS_THEME,p); }catch(e){}
+  applyTheme(); drawThemeChips();
+}
+function drawThemeChips(){
+  var box=document.getElementById('themeChips'); if(!box)return;
+  box.innerHTML='';
+  [['auto','Match phone'],['light','Light'],['dark','Dark']].forEach(function(o){
+    var b=document.createElement('button'); b.type='button';
+    b.className='chip'+(themePref()===o[0]?' on':'');
+    b.textContent=o[1];
+    b.onclick=function(){ setTheme(o[0]); };
+    box.appendChild(b);
+  });
 }
 function drawCardPick(){
   /* One pill however many cards there are. A top-up is paid by a person,
@@ -3527,6 +3659,7 @@ function drawSettingsTemplates(){
 }
 
 function openSettings(){
+  drawThemeChips();
   document.getElementById('flatNameInput').value=state.flatName;
   var box=document.getElementById('nameRows'); box.innerHTML='';
   state.members.forEach(function(m,i){
@@ -4090,6 +4223,14 @@ function wire(){
   state=loadLocal()||blank();
   try{ me=localStorage.getItem(LS_ME); }catch(e){}
   if(!me||memberById(me).active===false)me=(activeMembers()[0]||{}).id;
+  applyTheme();
+  // On 'match phone' the system switch has to reach us live, not on next launch.
+  try{
+    var mq=window.matchMedia('(prefers-color-scheme: dark)');
+    var onScheme=function(){ if(themePref()==='auto')applyTheme(); };
+    if(mq.addEventListener)mq.addEventListener('change',onScheme);
+    else if(mq.addListener)mq.addListener(onScheme);
+  }catch(e){}
   wire();
   // A phone that already has a name saved from before this change is treated
   // as settled — no point asking them to pick again.
