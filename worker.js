@@ -14,23 +14,33 @@ const ALLOWED_ORIGINS = [
   'http://localhost:8000'
 ];
 
-/* Tried in order. The newest model is usually the busiest — one released days
- * ago returns 503 "high demand" far more often than one a few months old, and
- * for reading a receipt the older one is no worse. Keep a settled model first
- * and a smaller one behind it, so a spike on one doesn't kill the feature.
+/* Tried in order, best reader first, with faster and older ones behind it so
+ * a spike on one doesn't kill the feature.
  * A 404 means the ID has been retired: check AI Studio for the current list. */
 const MODELS = [
-  'gemini-3.6-flash',
-  'gemini-3.1-flash-lite'
+  'gemini-3.8-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-3.6-flash'
 ];
 
-// 503 and 429 are transient. Wait and try again before moving on.
-const RETRY_DELAYS = [700, 1800];
+/* Timing is the whole point of this rewrite.
+ *
+ * The old version tried two models three times each with 0.7s and 1.8s
+ * between, and nothing capped a single slow call. One busy model could take
+ * the better part of a minute while the app gave up at thirty seconds — so a
+ * request that was going to succeed on the fallback looked like a dead
+ * reader. Now: every call is capped, every attempt checks the clock first,
+ * and a busy model is dropped after one retry instead of three. Switching
+ * models costs less than waiting on a queue. */
+const TOTAL_BUDGET_MS = 22000;   // finish inside this and the app never times out
+const CALL_TIMEOUT_MS = 11000;   // one hung call must not eat the whole budget
+const RETRY_DELAY_MS  = 600;
 
 const PROMPT = `You are reading a photo of a shop receipt.
 
 Return ONLY a JSON object, no markdown fences, no explanation:
-{"total": number|null, "merchant": string|null, "date": "YYYY-MM-DD"|null, "confident": boolean}
+{"total": number|null, "merchant": string|null, "date": "YYYY-MM-DD"|null,
+ "items": [{"name": string, "price": number}], "confident": boolean}
 
 Rules:
 - "total" is the final amount actually paid, in pounds as a plain number (e.g. 43.20).
@@ -48,6 +58,16 @@ Rules:
   are 20xx. Formats like "19AUG2026" or "28/04/26" are both normal. The date may
   only appear in small print at the very bottom of the receipt — look there too.
   Return null only if no date appears at all.
+- "items" is one entry per thing actually bought, in the order printed.
+  * "price" is the line total in pounds. If a line reads "2x Milk 3.00" and 3.00 is
+    the total for both, use 3.00; if 3.00 is the unit price, use 6.00. Follow the receipt.
+  * Put the quantity in the name when it matters, e.g. "2x Milk".
+  * Do NOT include subtotals, totals, VAT lines, discounts, vouchers, service charge,
+    tips, cash tendered, change, loyalty points, or anything that is not a purchase.
+    Those are handled separately — the app works out the difference itself.
+  * Tidy the names lightly: "150G TD EARL GREY BISC TB" becomes "Earl Grey biscuits".
+    Never invent a product that is not printed.
+  * If the items are unreadable, return an empty array rather than guessing.
 - "confident" is false if the image is blurred, cropped, or you are guessing.
 - Any field you cannot read reliably must be null. Never invent a value.`;
 
@@ -82,60 +102,120 @@ function json(body, status, origin) {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-async function callModel(model, mime, b64, key) {
+async function callModel(model, mime, b64, key, noThinking, timeoutMs) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-  return fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-    body: JSON.stringify({
-      contents: [{
-        parts: [
-          { text: PROMPT },
-          { inline_data: { mime_type: mime, data: b64 } }
-        ]
-      }],
-      generationConfig: {
-        temperature: 0,
-        /* Flash models think by default and thinking tokens are charged against
-         * maxOutputTokens. At 300 the model spent the lot reasoning and returned
-         * empty text with finishReason MAX_TOKENS — every receipt "unreadable".
-         * Reading a total off a receipt needs no reasoning, so thinking is off,
-         * and the ceiling is generous in case a model ignores that. */
-        thinkingConfig: { thinkingBudget: 0 },
-        maxOutputTokens: 1200,
-        responseMimeType: 'application/json'
-      }
-    })
-  });
+
+  /* Flash models think by default and thinking tokens count against
+   * maxOutputTokens, which is what made every receipt come back empty.
+   * Turning thinking off fixes that — but not every model accepts a budget
+   * of zero, and the ones that don't answer 400. So we ask for it, and if
+   * the model objects we ask again without it and a bigger ceiling. */
+  const generationConfig = {
+    temperature: 0,
+    maxOutputTokens: noThinking ? 4000 : 2500,
+    responseMimeType: 'application/json'
+  };
+  if (!noThinking) generationConfig.thinkingConfig = { thinkingBudget: 0 };
+
+  // Without this, a model that simply never answers holds the whole request open.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+      signal: ctrl.signal,
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { text: PROMPT },
+            { inline_data: { mime_type: mime, data: b64 } }
+          ]
+        }],
+        generationConfig
+      })
+    });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
-/* Walk the model list, retrying transient failures on each before dropping to
- * the next. Returns the first good response, or the last failure so the app
- * can say something specific rather than "model error". */
-async function askModels(mime, b64, key) {
-  let last = { status: 0, detail: '', model: '' };
+/* Walk the model list against a clock. Each model gets one retry on a
+ * transient failure, then we move on rather than queue behind a busy one.
+ * Returns the first good response, or the last failure so the app can say
+ * something specific rather than "model error". */
+async function askModels(mime, b64, key, deadline) {
+  /* One shape for every outcome. Returning {ok:true, res} from one branch and
+     {ok:false, status, detail} from another left the caller reading fields
+     that only exist on one of them, which every type checker rightly flags. */
+  const out = {
+    ok: false,
+    /** @type {Response|null} */ res: null,
+    model: '',
+    status: 0,
+    detail: '',
+    timedOut: false,
+    /* Why each model was given up on. Reporting only the last one left
+       "the reader failed" as the entire explanation, which is no help when
+       the first model is the one that is actually misconfigured.
+       @type {{model:string,status:number,why:string}[]} */
+    tried: []
+  };
 
   for (const model of MODELS) {
-    for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
-      let res;
-      try {
-        res = await callModel(model, mime, b64, key);
-      } catch {
-        last = { status: 0, detail: 'network error reaching the model', model };
-        break;                                   // network fault: try the next model
+    let noThinking = false, retried = false;
+    out.model = model;
+
+    for (;;) {
+      // Never start a call that cannot finish. Better a clear answer now than
+      // a timeout the app has to guess at.
+      const left = deadline - Date.now();
+      if (left < 4000) {
+        out.timedOut = true;
+        out.tried.push({ model, status: 0, why: 'ran out of time before trying' });
+        return out;
       }
 
-      if (res.ok) return { ok: true, res, model };
+      let res;
+      try {
+        res = await callModel(model, mime, b64, key, noThinking, Math.min(CALL_TIMEOUT_MS, left));
+      } catch (e) {
+        /* DOMException is an Error in the browsers this runs in, but the
+           name check is what matters and an unknown throw must not be
+           mislabelled as a timeout. */
+        const aborted = !!e && /** @type {any} */ (e).name === 'AbortError';
+        out.status = 0;
+        out.detail = aborted ? `no answer within ${CALL_TIMEOUT_MS / 1000}s`
+                             : `could not reach Google (${String(/** @type {any} */ (e)?.message || e).slice(0, 80)})`;
+        out.tried.push({ model, status: 0, why: out.detail });
+        break;                                   // stuck or unreachable: try the next model
+      }
+
+      if (res.ok) { out.ok = true; out.res = res; return out; }
 
       const detail = await res.text().catch(() => '');
-      last = { status: res.status, detail, model };
+      out.status = res.status;
+      out.detail = detail;
+
+      // "thinking budget is not supported" — ask again the plain way.
+      // noThinking is now true, so this can only happen once per model.
+      if (res.status === 400 && !noThinking && /thinking/i.test(detail)) {
+        noThinking = true;
+        continue;
+      }
 
       const transient = res.status === 503 || res.status === 429 || res.status >= 500;
-      if (!transient) break;                     // 400/403/404: retrying won't help
-      if (attempt < RETRY_DELAYS.length) await sleep(RETRY_DELAYS[attempt]);
+      if (!transient || retried) {               // 400/403/404 never improve; one retry otherwise
+        let why = '';
+        try { why = (JSON.parse(detail).error || {}).message || ''; } catch { why = ''; }
+        out.tried.push({ model, status: res.status, why: (why || detail || '').slice(0, 120) });
+        break;
+      }
+      retried = true;
+      await sleep(RETRY_DELAY_MS);
     }
   }
-  return { ok: false, ...last };
+  return out;
 }
 
 export default {
@@ -175,9 +255,18 @@ export default {
       return json({ error: 'Image too large.' }, 413, origin);
     }
 
-    const out = await askModels(mime, b64, env.GEMINI_KEY);
+    const started = Date.now();
+    const out = await askModels(mime, b64, env.GEMINI_KEY, started + TOTAL_BUDGET_MS);
 
     if (!out.ok) {
+      if (out.timedOut) {
+        return json({
+          error: 'Google is slow right now \u2014 nothing answered in time. Try again, or type it in.',
+          status: 'timeout',
+          detail: out.tried.map(t => `${t.model}: ${t.why}`).join(' \u00b7 ').slice(0, 300),
+          tried: out.tried
+        }, 504, origin);
+      }
       if (out.status === 503) {
         return json({
           error: 'The reader is busy at Google\u2019s end. Try again in a minute, or type it in.',
@@ -193,20 +282,44 @@ export default {
           status: 404
         }, 502, origin);
       }
-      if (out.status === 400 || out.status === 403) {
+      if (out.status === 403) {
         return json({
           error: 'The API key was rejected. Check the GEMINI_KEY secret in the Worker.',
-          status: out.status,
+          status: 403,
           detail: (out.detail || '').slice(0, 300)
         }, 502, origin);
       }
+      if (out.status === 400) {
+        // A 400 is usually a malformed request, not a bad key. Say what Google said.
+        let why = '';
+        try { why = (JSON.parse(out.detail).error || {}).message || ''; } catch { why = ''; }
+        if (/API key not valid|API_KEY_INVALID/i.test(out.detail)) {
+          return json({
+            error: 'The API key is not valid. Replace the GEMINI_KEY secret in the Worker.',
+            status: 400, detail: why.slice(0, 200)
+          }, 502, origin);
+        }
+        return json({
+          error: 'The model refused the request: ' + (why.slice(0, 120) || 'no reason given'),
+          status: 400,
+          detail: (out.detail || '').slice(0, 300)
+        }, 502, origin);
+      }
+      /* Everything else. Name every model and what it said, so the message
+         itself is the diagnosis rather than a prompt to go digging. */
+      const roll = out.tried.map(t => `${t.model}: ${t.status || 'no reply'}${t.why ? ' \u2014 ' + t.why : ''}`);
       return json({
-        error: 'The reader failed.',
+        error: roll.length
+          ? 'Every model failed. ' + roll.join(' \u00b7 ')
+          : 'The reader failed before it could ask Google.',
         status: out.status,
-        detail: (out.detail || '').slice(0, 300)
+        detail: (out.detail || '').slice(0, 300),
+        tried: out.tried
       }, 502, origin);
     }
 
+    // out.ok is true here, so res is set — the check keeps the type checker happy too.
+    if (!out.res) return json({ error: 'The reader failed.' }, 502, origin);
     const data = await out.res.json();
     const cand = data?.candidates?.[0];
     const text = cand?.content?.parts?.[0]?.text || '';
@@ -246,12 +359,25 @@ export default {
       ? parsed.merchant.trim().slice(0, 60) || null
       : null;
 
+    // Never trust the array either: drop anything malformed rather than
+    // letting a stray null reach the app.
+    const items = Array.isArray(parsed.items)
+      ? parsed.items
+          .filter(it => it && typeof it.name === 'string' &&
+                        typeof it.price === 'number' && isFinite(it.price) && it.price > 0)
+          .slice(0, 40)
+          .map(it => ({ name: it.name.trim().slice(0, 60), price: Math.round(it.price * 100) / 100 }))
+      : [];
+
     return json({
       total,
       merchant,
       date,
+      items,
+      itemsTotal: items.length ? Math.round(items.reduce((a, i) => a + i.price, 0) * 100) / 100 : null,
       confident: parsed.confident !== false,
-      model: out.model            // handy when one model reads better than another
+      model: out.model,           // handy when one model reads better than another
+      ms: Date.now() - started    // how long Google actually took, for when it feels slow
     }, 200, origin);
   }
 };
